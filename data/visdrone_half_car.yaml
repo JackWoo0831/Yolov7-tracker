@@ -1,0 +1,8 @@
+
+train: ./visdrone/train.txt
+val: ./visdrone/val.txt
+test: ./visdrone/test.txt
+
+nc: 4
+
+names: ['car', 'van', 'truck', 'bus']

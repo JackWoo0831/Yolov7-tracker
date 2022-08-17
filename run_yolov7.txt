@@ -1,0 +1,39 @@
+conda activate openmmlab
+
+0.generate dataset 
+## car only and half dataset
+python tools/convert_VisDrone_to_yolov2.py --split_name VisDrone2019-MOT-train --generate_imgs --car_only --half
+python tools/convert_VisDrone_to_yolov2.py --split_name VisDrone2019-MOT-val --generate_imgs --car_only
+python tools/convert_VisDrone_to_yolov2.py --split_name VisDrone2019-MOT-test-dev --generate_imgs --car_only
+
+## all category
+python tools/convert_VisDrone_to_yolov2.py --split_name VisDrone2019-MOT-train --generate_imgs
+python tools/convert_VisDrone_to_yolov2.py --split_name VisDrone2019-MOT-val --generate_imgs
+python tools/convert_VisDrone_to_yolov2.py --split_name VisDrone2019-MOT-test-dev --generate_imgs
+
+1.train:
+## car only and half dataset
+python train_aux.py --dataset visdrone --workers 8 --device 4 --batch-size 16 --data data/visdrone_half_car.yaml --img 1280 1280 --cfg cfg/training/yolov7-w6.yaml --weights './weights/yolov7-w6_training.pt' --name yolov7-w6-custom --hyp data/hyp.scratch.custom.yaml
+## all category
+python train_aux.py --dataset visdrone --workers 8 --device 4 --batch-size 16 --data data/visdrone_all.yaml --img 1280 1280 --cfg cfg/training/yolov7-w6.yaml --weights './weights/yolov7-w6_training.pt' --name yolov7-w6-custom --hyp data/hyp.scratch.custom.yaml
+
+launch tensorboard: tensorboard --logdir=$./runs/train/yolov7-w6-custom2$ --port=8090
+
+2.test:
+python test.py --dataset visdrone --data data/visdrone_half_car.yaml --img 1280 --batch 32 --conf 0.001 --iou 0.65 --task test --device 4 --save-txt --weights ./runs/train/yolov7-w6-custom3/weights/last.pt --name visdrone_yolov7w6_val
+
+3.track:
+## sort
+python tracker/track.py --dataset visdrone --data_format origin --tracker sort --model_path runs/train/yolov7-w6-custom4/weights/best.pt
+
+## deep sort
+python tracker/track.py --dataset visdrone --data_format origin --tracker deepsort --model_path runs/train/yolov7-w6-custom4/weights/best.pt --save_images
+
+## byte track
+python tracker/track.py --dataset visdrone --data_format origin --tracker bytetrack --model_path runs/train/yolov7-w6-custom4/weights/best.pt --save_images --save_videos
+
+## deep mot 
+python tracker/track.py --dataset visdrone --data_format origin --tracker deepmot --model_path runs/train/yolov7-w6-custom4/weights/best.pt
+
+## bot sort 
+python tracker/track.py --dataset visdrone --data_format origin --tracker botsort --model_path runs/train/yolov7-w6-custom4/weights/best.pt
