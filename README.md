@@ -39,6 +39,11 @@ YOLO v7 VisDrone训练完模型:
 
 ![gif](https://github.com/JackWoo0831/Yolov7-tracker/blob/master/test2.gif)
 
+## 环境配置  
+- python=3.7.0 pytorch=1.7.0 torchvision=0.8.0 cudatoolkit=11.0
+- [py-motmetrics](https://github.com/cheind/py-motmetrics)  (`pip install motmetrics`)
+- cython-bbox (`pip install cython_bbox`)
+- opencv
 
 ## 训练
 
