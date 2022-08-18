@@ -106,3 +106,5 @@ python tracker/track.py --dataset visdrone --data_format origin --tracker botsor
 (batch_size, num_objects, x_center, y_center, width, height, obj_conf, category_conf0, category_conf1, category_conf2, ...)
 ```
 > 注意: 推理的时候batch_size要求为1. 
+
+## 更多运行命令参考 run_yolov7.txt文件
