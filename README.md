@@ -17,6 +17,7 @@ BoT-SORT([arxiv2206](https://arxiv.org/pdf/2206.14651.pdf)),
 - [ ] 集成UAVMOT([CVPR2022](https://openaccess.thecvf.com/content/CVPR2022/papers/Liu_Multi-Object_Tracking_Meets_Moving_UAV_CVPR_2022_paper.pdf))
 - [ ] 达到更好的结果(缓解类别不平衡, 小目标等等)...
 - [ ] MOT challenge数据集
+- [ ] 更换Re-ID模型
 
 
 ## 效果
