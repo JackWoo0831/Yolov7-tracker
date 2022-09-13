@@ -15,7 +15,18 @@ python tools/convert_VisDrone_to_yolov2.py --split_name VisDrone2019-MOT-test-de
 ## car only and half dataset
 python train_aux.py --dataset visdrone --workers 8 --device 4 --batch-size 16 --data data/visdrone_half_car.yaml --img 1280 1280 --cfg cfg/training/yolov7-w6.yaml --weights './weights/yolov7-w6_training.pt' --name yolov7-w6-custom --hyp data/hyp.scratch.custom.yaml
 ## all category
-python train_aux.py --dataset visdrone --workers 8 --device 4 --batch-size 16 --data data/visdrone_all.yaml --img 1280 1280 --cfg cfg/training/yolov7-w6.yaml --weights './weights/yolov7-w6_training.pt' --name yolov7-w6-custom --hyp data/hyp.scratch.custom.yaml
+python train_aux.py --dataset visdrone --workers 8 --device 0 --batch-size 16 --data data/visdrone_all.yaml --img 1280 1280 --cfg cfg/training/yolov7-w6.yaml --weights './weights/yolov7-w6_training.pt' --name yolov7-w6-custom --hyp data/hyp.scratch.custom.yaml
+
+
+## all category, no mosaic, rect training
+NOTE: edited augment = False in line 246, train_aux.py
+python train_aux.py --dataset visdrone --workers 8 --device 2 --batch-size 16 --data data/visdrone_all.yaml --img 1280 1280 --rect --cfg cfg/training/yolov7-w6.yaml --weights './weights/yolov7-w6_training.pt' --name yolov7-w6-custom --hyp data/hyp.scratch.custom.yaml
+
+## all category, high resolution
+python -m torch.distributed.launch --nproc_per_node 2 train_aux.py --dataset visdrone --workers 8 --device 0,1 --sync-bn --batch-size 16 --data data/visdrone_all.yaml --img 1920 1920 --cfg cfg/training/yolov7-w6.yaml --weights './weights/yolov7-w6_training.pt' --name yolov7-w6-custom --hyp data/hyp.scratch.custom.yaml
+python train_aux.py --dataset visdrone --workers 8 --device 0 --batch-size 8 --data data/visdrone_all.yaml --img 1920 1920 --cfg cfg/training/yolov7-w6.yaml --weights './weights/yolov7-w6_training.pt' --name yolov7-w6-custom --hyp data/hyp.scratch.custom.yaml
+
+
 
 launch tensorboard: tensorboard --logdir=$./runs/train/yolov7-w6-custom2$ --port=8090
 
@@ -37,3 +48,6 @@ python tracker/track.py --dataset visdrone --data_format origin --tracker deepmo
 
 ## bot sort 
 python tracker/track.py --dataset visdrone --data_format origin --tracker botsort --model_path runs/train/yolov7-w6-custom4/weights/best.pt
+
+## uavmot 
+python tracker/track.py --dataset visdrone --data_format origin --tracker uavmot --model_path runs/train/yolov7-w6-custom4/weights/best.pt
