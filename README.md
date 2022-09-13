@@ -10,11 +10,12 @@ SORT,
 DeepSORT,  
 ByteTrack([ECCV2022](https://arxiv.org/pdf/2110.06864)),  
 DeepMOT([CVPR2020](https://openaccess.thecvf.com/content_CVPR_2020/papers/Xu_How_to_Train_Your_Deep_Multi-Object_Tracker_CVPR_2020_paper.pdf)),  
-BoT-SORT([arxiv2206](https://arxiv.org/pdf/2206.14651.pdf)), 
+BoT-SORT([arxiv2206](https://arxiv.org/pdf/2206.14651.pdf)),   
+UAVMOT([CVPR2022](https://openaccess.thecvf.com/content/CVPR2022/papers/Liu_Multi-Object_Tracking_Meets_Moving_UAV_CVPR_2022_paper.pdf))
 
 
 ## TODO
-- [ ] 集成UAVMOT([CVPR2022](https://openaccess.thecvf.com/content/CVPR2022/papers/Liu_Multi-Object_Tracking_Meets_Moving_UAV_CVPR_2022_paper.pdf))
+- [x] 集成UAVMOT([CVPR2022](https://openaccess.thecvf.com/content/CVPR2022/papers/Liu_Multi-Object_Tracking_Meets_Moving_UAV_CVPR_2022_paper.pdf))
 - [ ] 达到更好的结果(缓解类别不平衡, 小目标等等)...
 - [ ] MOT challenge数据集
 - [ ] 更换Re-ID模型
@@ -32,9 +33,10 @@ YOLO v7 VisDrone训练完模型:
 |:--------------|:-------:|:------:|:------:|:------:|
 |SORT       | **26.4**   | 36.4 |3264 |12.2 |
 |DeepSORT  | 12.1   | 26.9 | 3860 | 12.4|
-|ByteTrack  | 25.1   | 40.8| 1590 | **14.32**|
+|ByteTrack  | 25.1   | 40.8| 1590 | 14.32|
 |DeepMOT  | 15.0  | 24.8|3666 |7.64|
 |BoT-SORT  | 23.0 | **41.4**|**1014** |5.41|
+|UAVMOT   | 25.0 | 40.5 | 1644 |**18.56**|
 
 > fps具有一定的随机性
 
@@ -93,6 +95,11 @@ python tracker/track.py --dataset visdrone --data_format origin --tracker deepmo
 ***BoT-SORT***:  
 ```shell
 python tracker/track.py --dataset visdrone --data_format origin --tracker botsort --model_path runs/train/yolov7-w6-custom4/weights/best.pt
+```
+
+***UAVMOT***
+```shell
+python tracker/track.py --dataset visdrone --data_format origin --tracker uavmot --model_path runs/train/yolov7-w6-custom4/weights/best.pt
 ```
 
 > 您也可以通过增加
