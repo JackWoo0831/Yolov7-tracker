@@ -8,6 +8,7 @@ import lap
 
 from cython_bbox import bbox_overlaps as bbox_ious
 import kalman_filter
+import math 
 
 def merge_matches(m1, m2, shape):
     O,P,Q = shape
@@ -165,3 +166,111 @@ def fuse_motion(kf, cost_matrix, tracks, detections, only_position=False, lambda
         cost_matrix[row, gating_distance > gating_threshold] = np.inf
         cost_matrix[row] = lambda_ * cost_matrix[row] + (1-lambda_)* gating_distance
     return cost_matrix
+
+
+"""
+funcs to cal similarity, copied from UAVMOT
+"""
+def local_relation_fuse_motion(cost_matrix,
+                tracks,
+                detections,
+                only_position=False,
+                lambda_=0.98):
+    """
+    :param kf:
+    :param cost_matrix:
+    :param tracks:
+    :param detections:
+    :param only_position:
+    :param lambda_:
+    :return:
+    """
+
+    # print(cost_matrix.shape)
+    if cost_matrix.size == 0:
+        return cost_matrix
+
+    gating_dim = 2 if only_position else 4
+    # gating_threshold = kalman_filter.chi2inv95[gating_dim]
+    # measurements = np.asarray([det.tlwh2xyah() for det in detections])
+    structure_distance = structure_similarity_distance(tracks,
+                                                       detections)
+    cost_matrix = lambda_ * cost_matrix + (1 - lambda_) * structure_distance
+
+    return cost_matrix
+def structure_similarity_distance(tracks, detections):
+    track_structure = structure_representation(tracks)
+    detection_structure = structure_representation(detections,mode='detection')
+
+    # for debug
+    # print(track_structure.shape, detection_structure.shape)
+    # exit(0)
+    cost_matrix = np.maximum(0.0, cdist(track_structure, detection_structure, metric="cosine"))
+
+    return cost_matrix
+def angle(v1, v2):
+    # dx1 = v1[2] - v1[0]
+    # dy1 = v1[3] - v1[1]
+    # dx2 = v2[2] - v2[0]
+    # dy2 = v2[3] - v2[1]
+    dx1 = v1[0]
+    dy1 = v1[1]
+    dx2 = v2[0]
+    dy2 = v2[1]
+    angle1 = math.atan2(dy1, dx1)
+    angle1 = int(angle1 * 180/math.pi)
+    # print(angle1)
+    angle2 = math.atan2(dy2, dx2)
+    angle2 = int(angle2 * 180/math.pi)
+    # print(angle2)
+    if angle1*angle2 >= 0:
+        included_angle = abs(angle1-angle2)
+    else:
+        included_angle = abs(angle1) + abs(angle2)
+        if included_angle > 180:
+            included_angle = 360 - included_angle
+    return included_angle
+
+def structure_representation(tracks,mode='trcak'):
+    local_R =400
+    structure_matrix =[]
+    for i, track_A in enumerate(tracks):
+        length = []
+        index =[]
+        for j, track_B in enumerate(tracks):
+            # print(track_A.mean[0:2])
+            # pp: 中心点距离  shape: (1, )
+            if mode =="detection":
+                pp = list(
+                    map(lambda x: np.linalg.norm(np.array(x[0] - x[1])), zip(track_A.get_xy(), track_B.get_xy())))
+            else:
+                pp=list(map(lambda x: np.linalg.norm(np.array(x[0] - x[1])), zip(track_A.mean[0:2],track_B.mean[0:2])))
+            lgt = np.linalg.norm(pp)
+            if lgt < local_R and lgt >0:
+                length.append(lgt)
+                index.append(j)
+
+        if length==[]:
+            v =[0.0001,0.0001,0.0001]
+
+        else:
+            max_length = max(length)
+            min_length = min(length)
+            if max_length == min_length:
+                v = [max_length, min_length, 0.0001]
+            else:
+                max_index = index[length.index(max_length)]
+                min_index = index[length.index(min_length)]
+                if mode == "detection":
+                    v1 = tracks[max_index].get_xy() - track_A.get_xy()
+                    v2 = tracks[min_index].get_xy() - track_A.get_xy()
+                else:
+                    v1 = tracks[max_index].mean[0:2] - track_A.mean[0:2]
+                    v2 = tracks[min_index].mean[0:2] - track_A.mean[0:2]
+
+                include_angle = angle(v1, v2)
+                v = [max_length, min_length, include_angle]
+
+        structure_matrix.append(v)
+
+    return np.asarray(structure_matrix)

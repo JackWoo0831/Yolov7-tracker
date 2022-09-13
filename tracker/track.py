@@ -17,6 +17,7 @@ from deepsort import DeepSORT
 from bytetrack import ByteTrack
 from deepmot import DeepMOT
 from botsort import BoTSORT
+from uavmot import UAVMOT
 
 try:  # import package that outside the tracker folder  For yolo v7
     import sys 
@@ -46,7 +47,8 @@ def main(opts):
         'deepsort': DeepSORT,
         'bytetrack': ByteTrack,
         'deepmot': DeepMOT,
-        'botsort': BoTSORT
+        'botsort': BoTSORT,
+        'uavmot': UAVMOT
     }  # dict for trackers, key: str, value: class(BaseTracker)
     if opts.tracker == 'botsort':
         opts.kalman_format = 'botsort'
