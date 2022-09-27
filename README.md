@@ -1,5 +1,9 @@
 # YOLO v7 + 各种tracker实现多目标跟踪
 
+## 注意 
+20220927修复了STrack类中update不更新外观的问题, 代码有较大更, **您可能需要重新下载```./tracker```文件夹**. 
+尝试加入StrongSORT, 但是目前还不work:(, 尽力调一调
+
 ## 亮点  
 1. 统一代码风格, 对多种tracker重新整理, 详细注释, 方便阅读, 适合初学者 
 2. 多类多目标跟踪 
@@ -32,7 +36,7 @@ YOLO v7 VisDrone训练完模型:
 | Tracker       | MOTA   | IDF1 | IDS | fps |
 |:--------------|:-------:|:------:|:------:|:------:|
 |SORT       | **26.4**   | 36.4 |3264 |12.2 |
-|DeepSORT  | 12.1   | 26.9 | 3860 | 12.4|
+|DeepSORT  | 16.4   | 33.1 | 1387 | 12.51|
 |ByteTrack  | 25.1   | 40.8| 1590 | 14.32|
 |DeepMOT  | 15.0  | 24.8|3666 |7.64|
 |BoT-SORT  | 23.0 | **41.4**|**1014** |5.41|
@@ -101,6 +105,13 @@ python tracker/track.py --dataset visdrone --data_format origin --tracker botsor
 ```shell
 python tracker/track.py --dataset visdrone --data_format origin --tracker uavmot --model_path runs/train/yolov7-w6-custom4/weights/best.pt
 ```
+
+***StrongSORT***(目前有问题 正在修复)
+```shell
+python tracker/track.py --dataset visdrone --data_format origin --tracker strongsort --model_path runs/train/yolov7-w6-custom4/weights/best.pt --reid_model_path weights/osnet_x1_0.pth
+```
+
+> StrongSORT中OSNet的下载地址, 请参照https://github.com/mikel-brostrom/Yolov5_StrongSORT_OSNet/blob/master/strong_sort/deep/reid_model_factory.py
 
 > 您也可以通过增加
 > ```shell
