@@ -18,6 +18,7 @@ from bytetrack import ByteTrack
 from deepmot import DeepMOT
 from botsort import BoTSORT
 from uavmot import UAVMOT
+from strongsort import StrongSORT
 
 try:  # import package that outside the tracker folder  For yolo v7
     import sys 
@@ -48,12 +49,17 @@ def main(opts):
         'bytetrack': ByteTrack,
         'deepmot': DeepMOT,
         'botsort': BoTSORT,
-        'uavmot': UAVMOT
+        'uavmot': UAVMOT, 
+        'strongsort': StrongSORT, 
     }  # dict for trackers, key: str, value: class(BaseTracker)
+
+    # NOTE: ATTENTION: make kalman and tracker compatible
     if opts.tracker == 'botsort':
         opts.kalman_format = 'botsort'
+    elif opts.tracker == 'strongsort':
+        opts.kalman_format = 'strongsort'
 
-
+        
     """
     1. load model
     """
@@ -301,7 +307,7 @@ if __name__ == '__main__':
     # other options
     parser.add_argument('--track_buffer', type=int, default=30, help='tracking buffer')
     parser.add_argument('--gamma', type=float, default=0.1, help='param to control fusing motion and apperance dist')
-    parser.add_argument('--kalman_format', type=str, default='default', help='use what kind of Kalman, default, naive or bot-sort like')
+    parser.add_argument('--kalman_format', type=str, default='default', help='use what kind of Kalman, default, naive, strongsort or bot-sort like')
     parser.add_argument('--min_area', type=float, default=150, help='use to filter small bboxs')
 
     parser.add_argument('--save_images', action='store_true', help='save tracking results (image)')

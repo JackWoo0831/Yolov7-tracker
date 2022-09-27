@@ -153,6 +153,27 @@ def cal_cosine_distance(mat1, mat2):
 
     return np.dot(mat1, mat2.T)    
 
+def cal_eculidian_distance(mat1, mat2):
+    """
+    NOTE: another version to cal ecu dist
+
+    simple func to calculate ecu distance between 2 matrixs
+    
+    :param mat1: np.ndarray, shape(M, dim)
+    :param mat2: np.ndarray, shape(N, dim)
+    :return: np.ndarray, shape(M, N)
+    """
+    if len(mat1) == 0 or len(mat2) == 0:
+        return np.zeros((len(mat1), len(mat2)))
+
+    mat1_sq, mat2_sq = np.square(mat1).sum(axis=1), np.square(mat2).sum(axis=1)
+
+    # -2ab + a^2 + b^2 = (a-b)^2
+    dist = -2 * np.dot(mat1, mat2.T) + mat1_sq[:, None] + mat2_sq[None, :]
+    dist = np.clip(dist, 0, np.inf)
+
+    return np.minimum(0.0, dist.min(axis=0))
+    
 
 def fuse_motion(kf, cost_matrix, tracks, detections, only_position=False, lambda_=0.98):
     if cost_matrix.size == 0:
@@ -166,6 +187,91 @@ def fuse_motion(kf, cost_matrix, tracks, detections, only_position=False, lambda
         cost_matrix[row, gating_distance > gating_threshold] = np.inf
         cost_matrix[row] = lambda_ * cost_matrix[row] + (1-lambda_)* gating_distance
     return cost_matrix
+
+
+"""
+distance metric that combines multi-frame info
+used in StrongSORT
+TODO: use in DeepSORT
+"""
+
+class NearestNeighborDistanceMetric(object):
+    """
+    A nearest neighbor distance metric that, for each target, returns
+    the closest distance to any sample that has been observed so far.
+
+    Parameters
+    ----------
+    metric : str
+        Either "euclidean" or "cosine".
+    matching_threshold: float
+        The matching threshold. Samples with larger distance are considered an
+        invalid match.
+    budget : Optional[int]
+        If not None, fix samples per class to at most this number. Removes
+        the oldest samples when the budget is reached.
+
+    Attributes
+    ----------
+    samples : Dict[int -> List[ndarray]]
+        A dictionary that maps from target identities to the list of samples
+        that have been observed so far.
+
+    """
+
+    def __init__(self, metric, matching_threshold, budget=None):
+        if metric == "euclidean":
+            self._metric = cal_eculidian_distance
+        elif metric == "cosine":
+            self._metric = cal_cosine_distance
+        else:
+            raise ValueError(
+                "Invalid metric; must be either 'euclidean' or 'cosine'")
+        self.matching_threshold = matching_threshold
+        self.budget = budget
+        self.samples = {}
+
+    def partial_fit(self, features, targets, active_targets):
+        """Update the distance metric with new data.
+
+        Parameters
+        ----------
+        features : ndarray
+            An NxM matrix of N features of dimensionality M.
+        targets : ndarray
+            An integer array of associated target identities.
+        active_targets : List[int]
+            A list of targets that are currently present in the scene.
+
+        """
+        for feature, target in zip(features, targets):
+            self.samples.setdefault(target, []).append(feature)
+            if self.budget is not None:
+                self.samples[target] = self.samples[target][-self.budget:]
+        self.samples = {k: self.samples[k] for k in active_targets}
+
+    def distance(self, features, targets):
+        """Compute distance between features and targets.
+
+        Parameters
+        ----------
+        features : ndarray
+            An NxM matrix of N features of dimensionality M.
+        targets : List[int]
+            A list of targets to match the given `features` against.
+
+        Returns
+        -------
+        ndarray
+            Returns a cost matrix of shape len(targets), len(features), where
+            element (i, j) contains the closest squared distance between
+            `targets[i]` and `features[j]`.
+
+        """
+        cost_matrix = np.zeros((len(targets), len(features)))
+        for i, target in enumerate(targets):
+            cost_matrix[i, :] = self._metric(self.samples[target], features)
+        return cost_matrix
 
 
 """

@@ -8,7 +8,7 @@ from collections import OrderedDict
 import torch 
 from torchvision.ops import nms
 
-from kalman_filter import KalmanFilter, NaiveKalmanFilter, BoTSORTKalmanFilter
+from kalman_filter import KalmanFilter, NaiveKalmanFilter, BoTSORTKalmanFilter, NSAKalmanFilter
 import matching
 
 class TrackState(object):
@@ -65,13 +65,22 @@ KALMAN_DICT = {
     'default': KalmanFilter,
     'naive': NaiveKalmanFilter, 
     'botsort': BoTSORTKalmanFilter,
+    'strongsort': NSAKalmanFilter, 
 }  # different kalman filters
 
 """
 General class to describe a trajectory
 """
 class STrack(BaseTrack):
-    def __init__(self, cls, tlwh, score, kalman_format='default', feature=None) -> None:
+    def __init__(self, cls, tlwh, score, kalman_format='default', 
+        feature=None, use_avg_of_feature=True) -> None:
+        """
+        cls: category of this obj 
+        tlwh: positoin   score: conf score 
+        kalman_format: choose different state vector of kalman 
+        feature: re-id feature 
+        use_avg_of_feature: whether to use moving average
+        """
         super().__init__()
         # info of this track
         self.cls = cls
@@ -86,6 +95,8 @@ class STrack(BaseTrack):
         self.time_since_update = None
 
         self.features = []
+        self.has_feature = True if feature is not None else False
+        self.use_avg_of_feature = use_avg_of_feature
         if feature is not None:
             self.features.append(feature)
 
@@ -166,7 +177,7 @@ class STrack(BaseTrack):
         if self.mean is None:  # No kalman
             return self._tlwh.copy()
 
-        if self.kalman_format == 'default':
+        if self.kalman_format in ['default', 'strongsort']:
             # kalman mean: xc, yc, ar, h   where ar = w / h
             ret = self.mean[:4].copy()
             ret[2] *= ret[3]
@@ -202,7 +213,7 @@ class STrack(BaseTrack):
         """
         self.track_id = BaseTrack.next_id()
         # init kalman
-        if self.kalman_format == 'default':
+        if self.kalman_format in ['default', 'strongsort']:
             measurement = self.tlwh2xyah(self._tlwh)
         elif self.kalman_format == 'naive':
             measurement = self.tlwh2xyar(self._tlwh)
@@ -247,7 +258,7 @@ class STrack(BaseTrack):
         """
         reactivate a lost track
         """
-        if self.kalman_format == 'default':
+        if self.kalman_format in ['default', 'strongsort']:
             measurement = self.tlwh2xyah(new_track.tlwh)
         elif self.kalman_format == 'naive':
             measurement = self.tlwh2xyar(new_track.tlwh)
@@ -271,19 +282,42 @@ class STrack(BaseTrack):
         self.frame_id = frame_id
         self.tracklet_len += 1
 
+        # update position and score
         new_tlwh = new_track.tlwh
-        if self.kalman_format == 'default':
+        self.score = new_track.score
+
+        # update kalman
+        if self.kalman_format in ['default', 'strongsort']:
             measurement = self.tlwh2xyah(new_tlwh)
         elif self.kalman_format == 'naive':
             measurement = self.tlwh2xyar(new_tlwh)
         elif self.kalman_format == 'botsort':
             measurement = self.tlwh2xywh(new_tlwh)
-        self.mean, self.cov = self.kalman.update(
-            self.mean, self.cov, measurement)
+
+        if self.kalman_format == 'strongsort':  
+            # for strongsort, give larger conf object a smaller std.
+            self.mean, self.cov = self.kalman.update(
+                self.mean, self.cov, measurement, self.score)
+        else:
+            self.mean, self.cov = self.kalman.update(
+                self.mean, self.cov, measurement)
+
+        # update feature
+        if self.has_feature:        
+            feature = new_track.features[0] / np.linalg.norm(new_track.features[0])  # (512, )
+            if self.use_avg_of_feature:
+                smooth_feat = 0.9 * self.features[-1] + (1 - 0.9) * feature
+                smooth_feat /= np.linalg.norm(smooth_feat)
+                self.features = [smooth_feat]  # as new feature
+            else:
+                self.features.append(feature)
+        
+
+        # update status
         self.state = TrackState.Tracked
         self.is_activated = True
 
-        self.score = new_track.score
+        
 
 """
 a very simple SORT Tracker

@@ -2,7 +2,7 @@
 import numpy as np  
 from basetrack import TrackState, STrack, BaseTracker
 from kalman_filter import KalmanFilter, NaiveKalmanFilter
-from reid_model import Extractor
+from reid_models.deepsort_reid import Extractor
 import matching
 import torch 
 from torchvision.ops import nms
@@ -46,7 +46,6 @@ class DeepSORT(BaseTracker):
         det_results: numpy.ndarray or torch.Tensor, shape(N, 6), 6 includes bbox, conf_score, cls
         ori_img: original image, np.ndarray, shape(H, W, C)
         """
-
         if isinstance(det_results, torch.Tensor):
             det_results = det_results.cpu().numpy()
         if isinstance(ori_img, torch.Tensor):
@@ -60,7 +59,6 @@ class DeepSORT(BaseTracker):
 
         """step 1. filter results and init tracks"""
         det_results = det_results[det_results[:, 4] > self.det_thresh]
-
         # convert the scale to origin size
         # NOTE: yolo v7 origin out format: [xc, yc, w, h, conf, cls0_conf, cls1_conf, ..., clsn_conf]
         # TODO: check here, if nesscessary use two ratio
@@ -76,7 +74,7 @@ class DeepSORT(BaseTracker):
                 small_indicies = det_results[:, 2]*det_results[:, 3] > 50
                 det_results = det_results[small_indicies]
                 bbox_temp = bbox_temp[small_indicies]
-
+            
             if self.NMS:
                 # NOTE: Note nms need tlbr format
                 nms_indices = nms(torch.from_numpy(bbox_temp), torch.from_numpy(det_results[:, 4]), 

@@ -1,7 +1,7 @@
 import numpy as np  
 from basetrack import BaseTrack, TrackState, STrack, BaseTracker
 from kalman_filter import KalmanFilter, NaiveKalmanFilter
-from reid_model import Extractor
+from reid_models.deepsort_reid import Extractor
 import matching
 import torch 
 import torch.nn as nn 

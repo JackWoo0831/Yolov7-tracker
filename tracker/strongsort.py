@@ -1,20 +1,67 @@
+"""
+StrongSORT: Make DeepSORT Great Again(arxiv)
+
+Some Codes are partly copied from official repo
+"""
+
 import numpy as np  
 from basetrack import TrackState, STrack, BaseTracker
-from reid_models.deepsort_reid import Extractor
+from reid_models.OSNet import osnet_x0_25  # OSNet model
+from reid_models.load_model_tools import load_pretrained_weights
 import matching
 import torch 
 from torchvision.ops import nms
+import torchvision.transforms as T
+import cv2
 
-class ByteTrack(BaseTracker):
-    def __init__(self, opts, frame_rate=30, gamma=0.1, *args, **kwargs) -> None:
+from botsort import GMC, multi_gmc
+
+
+class StrongSORT(BaseTracker):
+    def __init__(self, opts, frame_rate=30, gamma=0.1, use_ECC=True, use_AFLink=True, use_GSI=True, num_of_budget=20, 
+                    *args, **kwargs) -> None:
         super().__init__(opts, frame_rate, *args, **kwargs)
-        self.use_apperance_model = False
-        self.reid_model = Extractor(opts.reid_model_path, use_cuda=True)
-        self.gamma = gamma  # coef that balance the apperance and ious
 
-        self.low_conf_thresh = max(0.15, self.opts.conf_thresh - 0.3)  # low threshold for second matching
+        self.gamma = gamma
+        self.reid_model = osnet_x0_25(num_classes=1, pretrained=False, )  # Re-ID: OSNet
+        # load model
+        self.reid_model.cuda().eval()
+        load_pretrained_weights(self.reid_model, opts.reid_model_path)
 
-        self.filter_small_area = False  # filter area < 50 bboxs
+        self.use_ECC = use_ECC  # whether use ECC(Camera compensation)
+        self.ECC = GMC(method='ecc', downscale=2, verbose=None)
+
+        # TODO: AFLink
+        self.use_AFLink = use_AFLink  # whether use AFLink (module that compute the
+        # similarity of two tracks)  defination of this net can be found in reid_model/PostLinker
+
+        # TODO: GSI
+        self.use_GSI = use_GSI  # whether use Gaussian smoothed interpolation of tracks
+
+        self.matching_thresh = min(0.3, self.opts.iou_thresh - 0.2)  # matching thresh
+        self.num_of_budget = num_of_budget
+
+        # self.metric = matching.NearestNeighborDistanceMetric(metric='euclidean', 
+        #     matching_threshold=self.matching_thresh, budget=self.num_of_budget)
+
+    def reid_preprocess(self, obj_bbox):
+        """
+        preprocess cropped object bboxes 
+        
+        obj_bbox: np.ndarray, shape=(h_obj, w_obj, c)
+
+        return: 
+        torch.Tensor of shape (c, 128, 256)
+        """
+        obj_bbox = cv2.resize(obj_bbox.astype(np.float32) / 255.0, dsize=(256, 128))  # shape: (128, 256, c)
+
+        transforms = T.Compose([
+            # T.ToPILImage(),
+            # T.Resize(size=(256, 128)),
+            T.ToTensor(),  # (c, 128, 256)
+            T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+        return transforms(obj_bbox)
 
     def get_feature(self, tlbrs, ori_img):
         """
@@ -26,17 +73,20 @@ class ByteTrack(BaseTracker):
 
         for tlbr in tlbrs:
             tlbr = list(map(int, tlbr))
-
-            obj_bbox.append(
-                ori_img[tlbr[1]: tlbr[3], tlbr[0]: tlbr[2]]
-            )
+            # if any(tlbr_ == -1 for tlbr_ in tlbr):
+            #     print(tlbr)
+            
+            tlbr_tensor = self.reid_preprocess(ori_img[tlbr[1]: tlbr[3], tlbr[0]: tlbr[2]])
+            obj_bbox.append(tlbr_tensor)
         
-        if obj_bbox:  # obj_bbox is not []
-            features = self.reid_model(obj_bbox)  # shape: (num_of_objects, feature_dim)
-
-        else:
-            features = np.array([])
-        return features    
+        if not obj_bbox:
+            return np.array([])
+        
+        obj_bbox = torch.stack(obj_bbox, dim=0)
+        obj_bbox = obj_bbox.cuda()  
+        
+        features = self.reid_model(obj_bbox)  # shape: (num_of_objects, feature_dim)
+        return features.cpu().detach().numpy()
 
     def update(self, det_results, ori_img):
         """
@@ -45,7 +95,6 @@ class ByteTrack(BaseTracker):
         det_results: numpy.ndarray or torch.Tensor, shape(N, 6), 6 includes bbox, conf_score, cls
         ori_img: original image, np.ndarray, shape(H, W, C)
         """
-
         if isinstance(det_results, torch.Tensor):
             det_results = det_results.cpu().numpy()
         if isinstance(ori_img, torch.Tensor):
@@ -57,6 +106,8 @@ class ByteTrack(BaseTracker):
         lost_stracks = []           # The tracks which are not obtained in the current frame but are not removed.(Lost for some time lesser than the threshold for removing)
         removed_stracks = []
 
+        """step 1. filter results and init tracks"""
+        det_results = det_results[det_results[:, 4] > self.det_thresh]
         # convert the scale to origin size
         # NOTE: yolo v7 origin out format: [xc, yc, w, h, conf, cls0_conf, cls1_conf, ..., clsn_conf]
         # TODO: check here, if nesscessary use two ratio
@@ -65,74 +116,59 @@ class ByteTrack(BaseTracker):
         det_results[:, 0], det_results[:, 2] =  det_results[:, 0]*ratio[1], det_results[:, 2]*ratio[1]
         det_results[:, 1], det_results[:, 3] =  det_results[:, 1]*ratio[0], det_results[:, 3]*ratio[0]
 
-        """step 1. filter results and init tracks"""
-               
-        # filter small area bboxs
-        if self.filter_small_area:  
-            small_indicies = det_results[:, 2]*det_results[:, 3] > 50
-            det_results = det_results[small_indicies]
+        if det_results.shape[0] > 0:
 
-        # run NMS
-        if self.NMS:
-            # NOTE: Note nms need tlbr format
-            nms_indices = nms(torch.from_numpy(STrack.xywh2tlbr(det_results[:, :4])), torch.from_numpy(det_results[:, 4]), 
-                            self.opts.nms_thresh)
-            det_results = det_results[nms_indices.numpy()]
-
-        # cal high and low indicies
-        det_high_indicies = det_results[:, 4] >= self.det_thresh
-        det_low_indicies = np.logical_and(np.logical_not(det_high_indicies), det_results[:, 4] > self.low_conf_thresh)
-
-        
-        # init saperatly
-        det_high, det_low = det_results[det_high_indicies], det_results[det_low_indicies]
-        if det_high.shape[0] > 0:
-            if self.use_apperance_model:
-                features = self.get_feature(STrack.xywh2tlbr(det_high[:, :4]), ori_img)
-                # detections: List[Strack]
-                D_high = [STrack(cls, STrack.xywh2tlwh(xywh), score, kalman_format=self.opts.kalman_format, feature=feature)
-                                for (cls, xywh, score, feature) in zip(det_high[:, -1], det_high[:, :4], det_high[:, 4], features)]
+            bbox_temp = STrack.xywh2tlbr(det_results[:, :4])            
+            if self.NMS:
+                # NOTE: Note nms need tlbr format
+                nms_indices = nms(torch.from_numpy(bbox_temp), torch.from_numpy(det_results[:, 4]), 
+                                self.opts.nms_thresh)
+                det_results = det_results[nms_indices.numpy()]
+                features = self.get_feature(bbox_temp[nms_indices.numpy()], ori_img)
             else:
-                D_high = [STrack(cls, STrack.xywh2tlwh(xywh), score, kalman_format=self.opts.kalman_format)
-                            for (cls, xywh, score) in zip(det_high[:, -1], det_high[:, :4], det_high[:, 4])]
-        else:
-            D_high = []
+                features = self.get_feature(bbox_temp, ori_img)
 
-        if det_low.shape[0] > 0:
-            D_low = [STrack(cls, STrack.xywh2tlwh(xywh), score, kalman_format=self.opts.kalman_format)
-                            for (cls, xywh, score) in zip(det_low[:, -1], det_low[:, :4], det_low[:, 4])]
+            # detections: List[Strack]
+            detections = [STrack(cls, STrack.xywh2tlwh(xywh), score, kalman_format=self.opts.kalman_format, feature=feature)
+                            for (cls, xywh, score, feature) in zip(det_results[:, -1], det_results[:, :4], det_results[:, 4], features)]
+
         else:
-            D_low = []
+            detections = []
 
         # Do some updates
-        unconfirmed = []  # unconfirmed means when frame id > 2, new track of last frame
+        unconfirmed = []
         tracked_stracks = []  # type: list[STrack]
         for track in self.tracked_stracks:
             if not track.is_activated:
                 unconfirmed.append(track)
             else:
                 tracked_stracks.append(track)
-       
-        # update track state
+
+        """Step 2. association with motion and apperance"""
         strack_pool = joint_stracks(tracked_stracks, self.lost_stracks)
+
+        if self.use_ECC:
+            # update first, of ECC module (Camera Copensation)
+            # NOTE: this part is similiar to BoTSORT, so we use that in BoTSORT
+            wrap = self.ECC.apply(raw_frame=ori_img, detections=detections)
+            multi_gmc(strack_pool, wrap)
 
         # Kalman predict, update every mean and cov of tracks
         STrack.multi_predict(stracks=strack_pool, kalman=self.kalman)
 
-        """Step 2. first match, match high conf det with tracks"""
-        if self.use_apperance_model:
-            # use apperance model, DeepSORT way
-            Apperance_dist = matching.embedding_distance(strack_pool, D_high, metric='cosine')
-            IoU_dist = matching.iou_distance(atracks=strack_pool, btracks=D_high)
-            Dist_mat = self.gamma * IoU_dist + (1. - self.gamma) * Apperance_dist
-        else:
-            Dist_mat = matching.iou_distance(atracks=strack_pool, btracks=D_high)
-        
-        # match
-        matched_pair0, u_tracks0_idx, u_dets0_idx = matching.linear_assignment(Dist_mat, thresh=0.9)
+        # calculate apperance distance, shape:(len(strack_pool), len(detections))
+        Apperance_dist = matching.embedding_distance(tracks=strack_pool, detections=detections, metric='euclidean')
+        # calculate iou distance, shape:(len(strack_pool), len(detections))
+        IoU_dist = matching.iou_distance(atracks=strack_pool, btracks=detections)
+        # fuse
+        Dist_mat = self.gamma * IoU_dist + (1. - self.gamma) * Apperance_dist
+
+        # match  thresh=0.9 is same in ByteTrack code
+        matched_pair0, u_tracks0_idx, u_dets0_idx = matching.linear_assignment(Dist_mat, thresh=0.7)
+
         for itrack_match, idet_match in matched_pair0:
             track = strack_pool[itrack_match]
-            det = D_high[idet_match]
+            det = detections[idet_match]
 
             if track.state == TrackState.Tracked:  # normal track
                 track.update(det, self.frame_id)
@@ -142,53 +178,61 @@ class ByteTrack(BaseTracker):
                 track.re_activate(det, self.frame_id, )
                 refind_stracks.append(track)
 
+        """ Step 3. association with motion"""
+        
         u_tracks0 = [strack_pool[i] for i in u_tracks0_idx if strack_pool[i].state == TrackState.Tracked]
-        u_dets0 = [D_high[i] for i in u_dets0_idx]
+        u_dets0 = [detections[i] for i in u_dets0_idx]
 
-        """Step 3. second match, match remain tracks and low conf dets"""
-        # only IoU
-        Dist_mat = matching.iou_distance(atracks=u_tracks0, btracks=D_low)
-        matched_pair1, u_tracks1_idx, u_dets1_idx = matching.linear_assignment(Dist_mat, thresh=0.5)
+        # calculate IoU
+        IoU_dist = matching.iou_distance(atracks=u_tracks0, btracks=u_dets0)
+        # match
+        matched_pair1, u_tracks1_idx, u_dets1_idx = matching.linear_assignment(IoU_dist, thresh=0.5)
+        u_det1 = [u_dets0[i] for i in u_dets1_idx]
 
         for itrack_match, idet_match in matched_pair1:
             track = u_tracks0[itrack_match]
-            det = D_low[idet_match]
+            det = u_dets0[idet_match]
 
             if track.state == TrackState.Tracked:  # normal track
                 track.update(det, self.frame_id)
                 activated_starcks.append(track)
 
             elif track.state == TrackState.Lost:
+                exit(0)
                 track.re_activate(det, self.frame_id, )
                 refind_stracks.append(track)
-        
+
         """ Step 4. deal with rest tracks and dets"""
         # deal with final unmatched tracks
         for idx in u_tracks1_idx:
             track = strack_pool[idx]
             track.mark_lost()
             lost_stracks.append(track)
-        
+
         # deal with unconfirmed tracks, match new track of last frame and new high conf det
-        Dist_mat = matching.iou_distance(unconfirmed, u_dets0)
-        matched_pair2, u_tracks2_idx, u_dets2_idx = matching.linear_assignment(Dist_mat, thresh=0.7)
+        Apperance_dist = matching.embedding_distance(tracks=unconfirmed, detections=u_det1, metric='euclidean')
+        IoU_dist = matching.iou_distance(atracks=unconfirmed, btracks=u_det1)
+        Dist_mat = self.gamma * IoU_dist + (1. - self.gamma) * Apperance_dist
+        matched_pair2, u_tracks2_idx, u_det2_idx = matching.linear_assignment(Dist_mat, thresh=0.7)
+
         for itrack_match, idet_match in matched_pair2:
             track = unconfirmed[itrack_match]
-            det = u_dets0[idet_match]
+            det = u_det1[idet_match]
             track.update(det, self.frame_id)
             activated_starcks.append(track)
 
-        for idx in u_tracks2_idx:
-            track = unconfirmed[idx]
+        for u_itrack2_idx in u_tracks2_idx:
+            track = unconfirmed[u_itrack2_idx]
             track.mark_removed()
             removed_stracks.append(track)
 
         # deal with new tracks
-        for idx in u_dets2_idx:
-            det = u_dets0[idx]
+        for idx in u_det2_idx:
+            det = u_det1[idx]
             if det.score > self.det_thresh + 0.1:
                 det.activate(self.frame_id)
                 activated_starcks.append(det)
+
 
         """ Step 5. remove long lost tracks"""
         for track in self.lost_stracks:
@@ -216,6 +260,7 @@ class ByteTrack(BaseTracker):
             print('Lost: {}'.format([track.track_id for track in lost_stracks]))
             print('Removed: {}'.format([track.track_id for track in removed_stracks]))
         return [track for track in self.tracked_stracks if track.is_activated]
+
 
 
 def joint_stracks(tlista, tlistb):
@@ -255,3 +300,4 @@ def remove_duplicate_stracks(stracksa, stracksb):
     resa = [t for i,t in enumerate(stracksa) if not i in dupa]
     resb = [t for i,t in enumerate(stracksb) if not i in dupb]
     return resa, resb
+

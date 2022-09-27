@@ -6,7 +6,7 @@ Some Codes are partly copied from official repo
 
 import numpy as np  
 from basetrack import TrackState, STrack, BaseTracker
-from reid_model import Extractor
+from reid_models.deepsort_reid import Extractor
 import matching
 import torch 
 from torchvision.ops import nms

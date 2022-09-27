@@ -1,6 +1,6 @@
 import numpy as np  
 from basetrack import BaseTrack, TrackState, STrack, BaseTracker
-from reid_model import Extractor
+from reid_models.deepsort_reid import Extractor
 import matching
 import torch 
 from torchvision.ops import nms
