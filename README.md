@@ -2,9 +2,11 @@
 
 ## 注意 
 
-20221015增加了对yolo v5的支持, 只需替换track.py, 将tracker文件夹放到v5的根目录(我测试的是官方的[repo](https://github.com/ultralytics/yolov5))下即可. 代码在[yolo v5](https://github.com/JackWoo0831/Yolov7-tracker/blob/master/other/track_yolov5.py). 
+**20221022**本代码的匹配代码比较简单, 不一定会达到最好的效果(每次匹配只用一次linear assignment, 没有和历史帧的特征相匹配), 您可以使用cascade matching的方式(参见[StrongSORT](https://github.com/dyhBUPT/StrongSORT/blob/master/deep_sort/tracker.py)的line94-134)  
 
-20220927修复了STrack类中update不更新外观的问题, 代码有较大更改, **您可能需要重新下载```./tracker```文件夹**. 
+**2022101**5增加了对yolo v5的支持, 只需替换track.py, 将tracker文件夹放到v5的根目录(我测试的是官方的[repo](https://github.com/ultralytics/yolov5))下即可. 代码在[yolo v5](https://github.com/JackWoo0831/Yolov7-tracker/blob/master/other/track_yolov5.py). 
+
+**20220927**修复了STrack类中update不更新外观的问题, 代码有较大更改, **您可能需要重新下载```./tracker```文件夹**. 
 尝试加入StrongSORT, 但是目前还不work:(, 尽力调一调
 
 ## 亮点  
