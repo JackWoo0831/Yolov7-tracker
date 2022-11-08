@@ -18,7 +18,7 @@ def letterbox(img, height=608, width=1088, color=(127.5, 127.5, 127.5)):  # resi
 
 
 class TrackerLoader(torch.utils.data.Dataset):
-    def __init__(self, path, img_size=1280, format='origin') -> None:
+    def __init__(self, path, img_size=1280, format='origin', seq=None) -> None:
         """
         Load images for EACH SEQUENCE
         path: file for img paths(format == 'yolo') or dataset path(format == 'origin')
@@ -30,24 +30,23 @@ class TrackerLoader(torch.utils.data.Dataset):
         self.img_files = []
         self.format = format
         if format == 'origin':
-            assert os.path.isdir(path), 'path must be your dataset path'
+            assert os.path.isdir(path), f'your path is {path}, path must be your dataset path'
            
             self.img_files = sorted(os.listdir(path))  # add relative path
 
-        elif format == 'yolo':
-            
-            assert os.path.isfile(path), 'path must be your path file'
+        elif format == 'yolo':  
+            assert os.path.isfile(path), f'your path is {path}, path must be your path file'
             with open(path, 'r') as f:
                 lines = f.readlines()
             
                 for line in lines:
+                    line = line.strip()
                     elems = line.split('/')
-                    if elems[-2] in path:  # 
+                    if elems[-2] in seq:  # 
                         self.img_files.append(os.path.join(self.DATA_ROOT, line))  # add abs path
 
                     
         assert self.img_files is not None
-
         
         if type(img_size) == int:
             self.width, self.height = img_size, img_size
@@ -64,7 +63,7 @@ class TrackerLoader(torch.utils.data.Dataset):
         if self.format == 'origin':
             current_img_path = os.path.join(self.DATA_ROOT, current_img_path)
               
-        img = cv2.imread(filename=current_img_path)  # (H, W, C)
+        img = cv2.imread(current_img_path)  # (H, W, C)
 
         assert img is not None, f'Fail to load image{current_img_path}'
 

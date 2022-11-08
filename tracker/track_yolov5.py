@@ -24,10 +24,9 @@ try:  # import package that outside the tracker folder  For yolo v7
     import sys 
     sys.path.append(os.getcwd())
     
-    from models.experimental import attempt_load
+    from models.common import DetectMultiBackend
     from evaluate import evaluate
-    from utils.torch_utils import select_device, time_synchronized, TracedModel
-    print('Note: running yolo v7 detector')
+    print('Note: running yolo v5 detector')
 
 except:
     pass
@@ -35,17 +34,24 @@ except:
 import tracker_dataloader
 
 DATASET_ROOT = '/data/wujiapeng/datasets/VisDrone2019/VisDrone2019'  # your dataset root
+# DATASET_ROOT = '/data/wujiapeng/datasets/' 
 
+# CATEGORY_NAMES = ['car']
 CATEGORY_NAMES = ['car', 'van', 'truck', 'bus']
 # CATEGORY_NAMES = ['pedestrain', 'people', 'bicycle', 'car', 'van', 'truck', 'tricycle', 'awning-tricycle', 'bus', 'motor']
 CATEGORY_DICT = {i: CATEGORY_NAMES[i] for i in range(len(CATEGORY_NAMES))}  # show class
 
 # IGNORE_SEQS = []
-IGNORE_SEQS = ['uav0000073_00600_v', 'uav0000088_00290_v']  # ignore seqs
+IGNORE_SEQS = ['uav0000073_00600_v', 'uav0000088_00290_v', 'uav0000073_04464_v']  # ignore seqs
+
+# NOTE: ONLY for yolo v5 model loader(func DetectMultiBackend)
+YAML_DICT = {'visdrone': './data/Visdrone_car.yaml', 
+             'uavdt': './data/UAVDT.yaml'}  
 
 timer = Timer()
 seq_fps = []  # list to store time used for every seq
 def main(opts):
+
     TRACKER_DICT = {
         'sort': BaseTracker,
         'deepsort': DeepSORT,
@@ -65,19 +71,15 @@ def main(opts):
     # NOTE: if save video, you must save image
     if opts.save_videos:
         opts.save_images = True
-
+        
     """
     1. load model
     """
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    ckpt = torch.load(opts.model_path, map_location=device)
-    model = ckpt['ema' if ckpt.get('ema') else 'model'].float().fuse().eval()  # for yolo v7
-
-    if opts.trace:
-        model = TracedModel(model, device, opts.img_size)
-    else:
-        model.to(device)
-
+    model = DetectMultiBackend(opts.model_path, device=device, dnn=False, data=YAML_DICT[opts.dataset], fp16=False)
+    model.eval()
+    # warm up
+    model.warmup(imgsz=(1, 3, 640, 640))
     """
     2. load dataset and track
     """
@@ -189,13 +191,14 @@ def main(opts):
         ## finally, save videos
         if opts.save_images and opts.save_videos:
             save_videos(seq_names=seq)
-            
+
     """
     3. evaluate results
     """
     print(f'average fps: {np.mean(seq_fps)}')
     evaluate(sorted(os.listdir(f'./tracker/results/{folder_name}')), 
                 sorted([seq + '.txt' for seq in seqs]), data_type='visdrone', result_folder=folder_name)  
+
 
 
 def save_results(folder_name, seq_name, results, data_type='default'):
@@ -252,7 +255,7 @@ def plot_img(img, frame_id, results, save_dir):
         cv2.putText(img_, text, (tlbr[0], tlbr[1]), fontFace=cv2.FONT_HERSHEY_PLAIN, fontScale=1, 
                         color=(255, 164, 0), thickness=1)
 
-    cv2.imwrite(filename=os.path.join(save_dir, f'{frame_id:05d}.jpg'), img=img_)
+    cv2.imwrite(os.path.join(save_dir, f'{frame_id:05d}.jpg'), img_)
 
 
 def save_videos(seq_names):
