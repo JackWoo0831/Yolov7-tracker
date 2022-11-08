@@ -74,6 +74,7 @@ def main(opts):
     model = ckpt['ema' if ckpt.get('ema') else 'model'].float().fuse().eval()  # for yolo v7
 
     if opts.trace:
+        print(opts.img_size)
         model = TracedModel(model, device, opts.img_size)
     else:
         model.to(device)
@@ -189,7 +190,7 @@ def main(opts):
         ## finally, save videos
         if opts.save_images and opts.save_videos:
             save_videos(seq_names=seq)
-            
+
     """
     3. evaluate results
     """
@@ -303,6 +304,7 @@ if __name__ == '__main__':
     parser.add_argument('--tracker', type=str, default='bytetrack', help='sort, deepsort, etc')
 
     parser.add_argument('--model_path', type=str, default=None, help='model path')
+    parser.add_argument('--trace', type=bool, default=False, help='traced model of YOLO v7')
 
     parser.add_argument('--img_size', nargs='+', type=int, default=[1280, 1280], help='[train, test] image sizes')
 
