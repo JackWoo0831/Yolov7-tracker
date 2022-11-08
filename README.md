@@ -1,12 +1,14 @@
 # YOLO v7 + 各种tracker实现多目标跟踪
 
-## 注意 
+## 更新记录
 
-**20221022**本代码的匹配代码比较简单, 不一定会达到最好的效果(每次匹配只用一次linear assignment, 没有和历史帧的特征相匹配), 您可以使用cascade matching的方式(参见[StrongSORT](https://github.com/dyhBUPT/StrongSORT/blob/master/deep_sort/tracker.py)的line94-134)  
+**2022.11.08**更新了track.py, track_yolov5.py, basetrack.py和tracker_dataloader.py, 修复了yolo格式读取数据以及保存视频功能的一些bug, 并增加了隔帧检测的功能(大多数时候用不到). 
 
-**2022101**5增加了对yolo v5的支持, 只需替换track.py, 将tracker文件夹放到v5的根目录(我测试的是官方的[repo](https://github.com/ultralytics/yolov5))下即可. 代码在[yolo v5](https://github.com/JackWoo0831/Yolov7-tracker/blob/master/other/track_yolov5.py). 
+**2022.10.22**本代码的匹配代码比较简单, 不一定会达到最好的效果(每次匹配只用一次linear assignment, 没有和历史帧的特征相匹配), 您可以使用cascade matching的方式(参见[StrongSORT](https://github.com/dyhBUPT/StrongSORT/blob/master/deep_sort/tracker.py)的line94-134)  
 
-**20220927**修复了STrack类中update不更新外观的问题, 代码有较大更改, **您可能需要重新下载```./tracker```文件夹**. 
+**2022.10.15**增加了对yolo v5的支持, 只需替换track.py, 将tracker文件夹放到v5的根目录(我测试的是官方的[repo](https://github.com/ultralytics/yolov5))下即可. 代码在[yolo v5](https://github.com/JackWoo0831/Yolov7-tracker/blob/master/tracker/track_yolov5.py). 
+
+**2022.09.27**修复了STrack类中update不更新外观的问题, 代码有较大更改, **您可能需要重新下载```./tracker```文件夹**. 
 尝试加入StrongSORT, 但是目前还不work:(, 尽力调一调
 
 ## 亮点  
@@ -27,7 +29,7 @@ UAVMOT([CVPR2022](https://openaccess.thecvf.com/content/CVPR2022/papers/Liu_Mult
 - [x] 集成UAVMOT([CVPR2022](https://openaccess.thecvf.com/content/CVPR2022/papers/Liu_Multi-Object_Tracking_Meets_Moving_UAV_CVPR_2022_paper.pdf))
 - [ ] 达到更好的结果(缓解类别不平衡, 小目标等等)...
 - [ ] MOT challenge数据集
-- [ ] 更换Re-ID模型
+- [x] 更换Re-ID模型(更换了OSNet, 效果不好...)
 
 
 ## 效果
@@ -78,6 +80,8 @@ python train_aux.py --dataset visdrone --workers 8 --device <$GPU_id$> --batch-s
 > 更多训练信息参考[YOLO v7](https://github.com/WongKinYiu/yolov7)
 
 ## 跟踪  
+
+***在跟踪之前***, 您需要选择读取数据的方式, 即`opts.data_format`参数, 如果选择`yolo`格式, 您需要在工程根目录下按照`yolo`的方式(例如本仓库的`./visdrone/test.txt`), 您需要修改`track.py`中的`DATA_ROOT`等变量, 与`test.txt`中的路径配合起来. 如果使用数据集原本的路径, 要根据数据集本身的路径特点进行调整. 一是`track.py`中的路径变量, 二是`track_dataloder.py`中`TrackerLoader`类的初始化函数中的路径.  
 
 > model_path 参数为训练后的detector model, 假设路径为 runs/train/yolov7-w6-custom4/weights/best.pt  
 
