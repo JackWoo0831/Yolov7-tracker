@@ -2,6 +2,8 @@
 
 ## 更新记录
 
+**2022.11.09**修复了BoT-SORT中的一处错误[issue 16](https://github.com/JackWoo0831/Yolov7-tracker/issues/16), 加粗了边界框与字体.  
+
 **2022.11.08**更新了track.py, track_yolov5.py, basetrack.py和tracker_dataloader.py, 修复了yolo格式读取数据以及保存视频功能的一些bug, 并增加了隔帧检测的功能(大多数时候用不到). 
 
 **2022.10.22**本代码的匹配代码比较简单, 不一定会达到最好的效果(每次匹配只用一次linear assignment, 没有和历史帧的特征相匹配), 您可以使用cascade matching的方式(参见[StrongSORT](https://github.com/dyhBUPT/StrongSORT/blob/master/deep_sort/tracker.py)的line94-134)  
