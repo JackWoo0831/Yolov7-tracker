@@ -28,8 +28,8 @@ class GMC:
             self.matcher = cv2.BFMatcher(cv2.NORM_L2)
 
         elif self.method == 'ecc':
-            number_of_iterations = 5000
-            termination_eps = 1e-6
+            number_of_iterations = 100
+            termination_eps = 1e-5
             self.warp_mode = cv2.MOTION_EUCLIDEAN
             self.criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, number_of_iterations, termination_eps)
 
@@ -270,7 +270,7 @@ def multi_gmc(stracks, H=np.eye(2, 3)):
 
 
 class BoTSORT(BaseTracker):
-    def __init__(self, opts, frame_rate=30, gamma=0.02, *args, **kwargs) -> None:
+    def __init__(self, opts, frame_rate=30, gamma=0.02, use_GMC=False, *args, **kwargs) -> None:
         super().__init__(opts, frame_rate, *args, **kwargs)
 
         self.use_apperance_model = False
@@ -282,6 +282,7 @@ class BoTSORT(BaseTracker):
 
         self.filter_small_area = False  # filter area < 50 bboxs, TODO: why some bboxs has 0 area
 
+        self.use_GMC = use_GMC
         self.gmc = GMC(method='orb', downscale=2, verbose=None)  # GMC module to fix camera motion
 
         # for BoT SORT association strategy  equation(12) in paper
@@ -390,8 +391,10 @@ class BoTSORT(BaseTracker):
         STrack.multi_predict(stracks=strack_pool, kalman=self.kalman)
 
         # Fix camera motion
-        wrap = self.gmc.apply(raw_frame=ori_img, detections=det_high)
-        multi_gmc(strack_pool, wrap)  # update kalman mean and cov
+        if self.use_GMC:
+            wrap = self.gmc.apply(raw_frame=ori_img, detections=det_high)
+            multi_gmc(strack_pool, wrap)  # update kalman mean and cov
+            multi_gmc(unconfirmed, wrap)
 
         """Step 2. first match, high conf detections"""
         IoU_dist = matching.iou_distance(strack_pool, D_high)  # IoU dist
@@ -444,7 +447,7 @@ class BoTSORT(BaseTracker):
         """ Step 4. deal with rest tracks and dets"""
         # deal with final unmatched tracks
         for idx in u_tracks1_idx:
-            track = strack_pool[idx]
+            track = u_tracks0[idx]
             track.mark_lost()
             lost_stracks.append(track)
 
