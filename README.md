@@ -2,6 +2,8 @@
 
 ## 更新记录
 
+**2022.11.10**更新了如何设置数据集路径的说明, 请参见README的`track.py路径读取说明`部分.
+
 **2022.11.09**修复了BoT-SORT中的一处错误[issue 16](https://github.com/JackWoo0831/Yolov7-tracker/issues/16), 加粗了边界框与字体.  
 
 **2022.11.08**更新了track.py, track_yolov5.py, basetrack.py和tracker_dataloader.py, 修复了yolo格式读取数据以及保存视频功能的一些bug, 并增加了隔帧检测的功能(大多数时候用不到). 
@@ -80,6 +82,54 @@ python tools/convert_VisDrone_to_yolov2.py --split_name VisDrone2019-MOT-train -
 python train_aux.py --dataset visdrone --workers 8 --device <$GPU_id$> --batch-size 16 --data data/visdrone_all.yaml --img 1280 1280 --cfg cfg/training/yolov7-w6.yaml --weights <$YOLO v7 pretrained model path$> --name yolov7-w6-custom --hyp data/hyp.scratch.custom.yaml
 ```  
 > 更多训练信息参考[YOLO v7](https://github.com/WongKinYiu/yolov7)
+
+## `track.py`路径读取说明  
+
+通常来讲, 一个MOT数据集的目录结构大概遵循`划分(训练、测试等)---序列---图片与标注`的结构, 如下所示:
+
+~~~
+{DATASET ROOT}
+|-- dataset name
+|   |-- train
+|   |   |-- sequence name
+|   |   |    |--images
+|   |   |-- ...
+|   |-- val
+|   |   |-- ...
+|   |-- test
+|   |   |-- ...
+~~~
+
+因为这个代码是基于YOLO检测器的, 所以您可以遵循数据集本来的格式(data_foramt = origin), 也可以遵循YOLO格式(data_foramt = yolo). 下面分别介绍. 
+
+***1. origin***
+
+origin意味着您直接使用数据集原本的路径, **而不是通过yolo要求的txt格式读取.**  `track.py` 或 `track_yolov5.py`中的**DATA_ROOT变量的值应为具体到序列下面的路径**. 以VisDrone为例, 如果要测试VisDrone2019测试集的视频, 目录为`/data/datasets/VisDrone2019/VisDrone2019-MOT-test-dev`, 在测试集目录下有annotations和sequences两个文件夹, 分别是标注和图片, 则您需要指定DATA_ROOT变量: 
+
+```
+DATA_ROOT的值应为/data/datasets/VisDrone2019/VisDrone2019-MOT-test-dev/sequences, 即DATA_ROOT目录下应该为各个视频序列的文件夹.
+```
+
+***2. yolo***
+
+yolo格式意味着您通过yolo训练时所要求的txt文件读取序列. 我们知道yolo要求txt文件记录图片的路径, 例如:
+
+```
+VisDrone2019/images/VisDrone2019-MOT-test-dev/uav0000120_04775_v/0000001.jpg
+```
+
+完整的路径是`/data/datasets/VisDrone2019/images/VisDrone2019-MOT-test-dev/uav0000120_04775_v/0000001.jpg`, 我们以`/`分割字符串, 则倒数第二个元素就是序列名称, 所以如果以yolo格式读取数据, 您需要指定以下两处:  
+
+```
+1. 读取哪个txt文件. 
+
+2. 在tracker/tracker_dataloader.py的TrackerLoader类中, 指定self.DATA_ROOT属性, 保证和txt中连起来是图片的准确路径.
+```
+
+***总之, 可能需要根据不同的数据集调整数据的读取方式. 总的原则是, 要能读清楚有哪些序列, 并且让TrackerLoader的self.img_files变量读到每个图片的路径.***
+
+
+
 
 ## 跟踪  
 
