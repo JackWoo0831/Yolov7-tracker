@@ -345,7 +345,6 @@ class BaseTracker(object):
             self.model_img_size = opts.img_size
 
         self.debug_mode = False
-
     def update(self, det_results, ori_img):
         """
         this func is called by every time step
@@ -459,6 +458,56 @@ class BaseTracker(object):
             if self.frame_id - track.end_frame > self.max_time_lost:
                 track.mark_removed()
                 removed_stracks.append(track)
+
+        # update all
+        self.tracked_stracks = [t for t in self.tracked_stracks if t.state == TrackState.Tracked]
+        self.tracked_stracks = joint_stracks(self.tracked_stracks, activated_starcks)
+        self.tracked_stracks = joint_stracks(self.tracked_stracks, refind_stracks)
+        # self.lost_stracks = [t for t in self.lost_stracks if t.state == TrackState.Lost]  # type: list[STrack]
+        self.lost_stracks = sub_stracks(self.lost_stracks, self.tracked_stracks)
+        self.lost_stracks.extend(lost_stracks)
+        self.lost_stracks = sub_stracks(self.lost_stracks, self.removed_stracks)
+        self.removed_stracks.extend(removed_stracks)
+        self.tracked_stracks, self.lost_stracks = remove_duplicate_stracks(self.tracked_stracks, self.lost_stracks)
+
+
+        # print
+        if self.debug_mode:
+            print('===========Frame {}=========='.format(self.frame_id))
+            print('Activated: {}'.format([track.track_id for track in activated_starcks]))
+            print('Refind: {}'.format([track.track_id for track in refind_stracks]))
+            print('Lost: {}'.format([track.track_id for track in lost_stracks]))
+            print('Removed: {}'.format([track.track_id for track in removed_stracks]))
+        return [track for track in self.tracked_stracks if track.is_activated]
+
+    def update_without_detection(self, det_results, ori_img):
+        """
+        update tracks when no detection
+        only predict current tracks
+        """
+        if isinstance(ori_img, torch.Tensor):
+            ori_img = ori_img.numpy()
+
+        self.frame_id += 1
+        activated_starcks = []      # for storing active tracks, for the current frame
+        refind_stracks = []         # Lost Tracks whose detections are obtained in the current frame
+        lost_stracks = []           # The tracks which are not obtained in the current frame but are not removed.(Lost for some time lesser than the threshold for removing)
+        removed_stracks = []
+
+        """step 1. init tracks"""
+
+        # Do some updates
+        unconfirmed = []
+        tracked_stracks = []  # type: list[STrack]
+        for track in self.tracked_stracks:
+            if not track.is_activated:
+                unconfirmed.append(track)
+            else:
+                tracked_stracks.append(track)
+        
+        """step 2. predict Kalman without updating"""
+        strack_pool = joint_stracks(tracked_stracks, self.lost_stracks)
+        STrack.multi_predict(stracks=strack_pool, kalman=self.kalman)
 
         # update all
         self.tracked_stracks = [t for t in self.tracked_stracks if t.state == TrackState.Tracked]
