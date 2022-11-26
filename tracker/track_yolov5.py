@@ -35,22 +35,6 @@ except:
 import tracker_dataloader
 import trackeval
 
-"""
-DATASET_ROOT = '/data/wujiapeng/datasets/VisDrone2019/VisDrone2019'  # your dataset root
-# DATASET_ROOT = '/data/wujiapeng/datasets/' 
-
-# CATEGORY_NAMES = ['car']
-CATEGORY_NAMES = ['car', 'van', 'truck', 'bus']
-# CATEGORY_NAMES = ['pedestrain', 'people', 'bicycle', 'car', 'van', 'truck', 'tricycle', 'awning-tricycle', 'bus', 'motor']
-CATEGORY_DICT = {i: CATEGORY_NAMES[i] for i in range(len(CATEGORY_NAMES))}  # show class
-
-# IGNORE_SEQS = []
-IGNORE_SEQS = ['uav0000073_00600_v', 'uav0000088_00290_v', 'uav0000073_04464_v']  # ignore seqs
-
-# NOTE: ONLY for yolo v5 model loader(func DetectMultiBackend)
-YAML_DICT = {'visdrone': './data/Visdrone_car.yaml', 
-             'uavdt': './data/UAVDT.yaml'}  
-"""
 
 def set_basic_params(cfgs):
     global CATEGORY_DICT, DATASET_ROOT, CERTAIN_SEQS, IGNORE_SEQS, YAML_DICT
