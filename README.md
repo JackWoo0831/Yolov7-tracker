@@ -2,6 +2,8 @@
 
 ## 更新记录
 
+**2022.11.26**加入了[TrackEval](https://github.com/JonathonLuiten/TrackEval)评测的方式, 支持MOT, VisDrone和UAVDT三种数据集. 此外将一些路径变量选择了按照`yaml`的方式读取, 尽量让代码可读性高一些. 如果您不想用TrackEval进行评测, 则可以将`track.py`或`track_yolov5.py`的命令配置代码`parser.add_argument('--track_eval', type=bool, default=True, help='Use TrackEval to evaluate')`改为`False`.
+
 **2022.11.10**更新了如何设置数据集路径的说明, 请参见README的`track.py路径读取说明`部分.
 
 **2022.11.09**修复了BoT-SORT中的一处错误[issue 16](https://github.com/JackWoo0831/Yolov7-tracker/issues/16), 加粗了边界框与字体.  
