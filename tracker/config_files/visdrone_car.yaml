@@ -1,0 +1,52 @@
+# Config file of VisDrone dataset
+
+DATASET_ROOT: '/data/wujiapeng/datasets/VisDrone2019/VisDrone2019'
+CATEGORY_NAMES: 
+  - 'car'
+  - 'van'
+  - 'truck'
+  - 'bus'
+
+CATEGORY_DICT:
+  0: 'car'
+  1: 'van'
+  2: 'truck'
+  3: 'bus'
+
+CERTAIN_SEQS:
+  - 
+
+IGNORE_SEQS:  # Seqs you want to ignore
+  - 'uav0000073_00600_v'
+  - 'uav0000088_00290_v'
+  - 'uav0000073_04464_v'
+
+YAML_DICT:  './data/Visdrone_car.yaml'  # NOTE: ONLY for yolo v5 model loader(func DetectMultiBackend)
+
+TRACK_EVAL:  # If use TrackEval to evaluate, use these configs
+  'DISPLAY_LESS_PROGRESS': False
+  'GT_FOLDER': '/data/wujiapeng/datasets/VisDrone2019/VisDrone2019/VisDrone2019-MOT-test-dev/annotations'
+  'TRACKERS_FOLDER': './tracker/results'
+  'CLASSES_TO_EVAL': 
+    - 'car'
+    - 'van'
+    - 'truck'
+    - 'bus'
+  'SKIP_SPLIT_FOL': True
+  'TRACKER_SUB_FOLDER': ''
+  'SEQ_INFO': 
+    'uav0000009_03358_v': 219 
+    'uav0000077_00720_v': 780
+    'uav0000119_02301_v': 179
+    'uav0000120_04775_v': 1000
+    'uav0000161_00000_v': 308
+    'uav0000188_00000_v': 260
+    'uav0000201_00000_v': 677
+    'uav0000249_00001_v': 360
+    'uav0000249_02688_v': 244
+    'uav0000297_00000_v': 146
+    'uav0000297_02761_v': 373
+    'uav0000306_00230_v': 420
+    'uav0000355_00001_v': 468
+    'uav0000370_00001_v': 265
+  'GT_LOC_FORMAT': '{gt_folder}/{seq}.txt'

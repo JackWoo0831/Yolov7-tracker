@@ -11,6 +11,7 @@ import argparse
 import os
 from time import gmtime, strftime
 from timer import Timer
+import yaml
 
 from basetrack import BaseTracker  # for framework
 from deepsort import DeepSORT
@@ -32,7 +33,9 @@ except:
     pass
 
 import tracker_dataloader
+import trackeval
 
+"""
 DATASET_ROOT = '/data/wujiapeng/datasets/VisDrone2019/VisDrone2019'  # your dataset root
 # DATASET_ROOT = '/data/wujiapeng/datasets/' 
 
@@ -47,10 +50,21 @@ IGNORE_SEQS = ['uav0000073_00600_v', 'uav0000088_00290_v', 'uav0000073_04464_v']
 # NOTE: ONLY for yolo v5 model loader(func DetectMultiBackend)
 YAML_DICT = {'visdrone': './data/Visdrone_car.yaml', 
              'uavdt': './data/UAVDT.yaml'}  
+"""
+
+def set_basic_params(cfgs):
+    global CATEGORY_DICT, DATASET_ROOT, CERTAIN_SEQS, IGNORE_SEQS, YAML_DICT
+    CATEGORY_DICT = cfgs['CATEGORY_DICT']
+    DATASET_ROOT = cfgs['DATASET_ROOT']
+    CERTAIN_SEQS = cfgs['CERTAIN_SEQS']
+    IGNORE_SEQS = cfgs['IGNORE_SEQS']
+    YAML_DICT = cfgs['YAML_DICT']
+
 
 timer = Timer()
 seq_fps = []  # list to store time used for every seq
-def main(opts):
+def main(opts, cfgs):
+    set_basic_params(cfgs)  # NOTE: set basic path and seqs params first
 
     TRACKER_DICT = {
         'sort': BaseTracker,
@@ -76,7 +90,7 @@ def main(opts):
     1. load model
     """
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    model = DetectMultiBackend(opts.model_path, device=device, dnn=False, data=YAML_DICT[opts.dataset], fp16=False)
+    model = DetectMultiBackend(opts.model_path, device=device, dnn=False, data=YAML_DICT, fp16=False)
     model.eval()
     # warm up
     model.warmup(imgsz=(1, 3, 640, 640))
@@ -196,9 +210,33 @@ def main(opts):
     3. evaluate results
     """
     print(f'average fps: {np.mean(seq_fps)}')
-    evaluate(sorted(os.listdir(f'./tracker/results/{folder_name}')), 
-                sorted([seq + '.txt' for seq in seqs]), data_type='visdrone', result_folder=folder_name)  
+    if opts.track_eval:
+        default_eval_config = trackeval.Evaluator.get_default_eval_config()
+        default_dataset_config = trackeval.datasets.MotChallenge2DBox.get_default_dataset_config()
+        yaml_dataset_config = cfgs['TRACK_EVAL']  # read yaml file to read TrackEval configs
+        for k in default_dataset_config.keys():
+            if k in yaml_dataset_config.keys():  # if the key need to be modified
+                default_dataset_config[k] = yaml_dataset_config[k]                
 
+        default_metrics_config = {'METRICS': ['HOTA', 'CLEAR', 'Identity'], 'THRESHOLD': 0.5}
+        config = {**default_eval_config, **default_dataset_config, **default_metrics_config}  # Merge default configs
+        eval_config = {k: v for k, v in config.items() if k in default_eval_config.keys()}
+        dataset_config = {k: v for k, v in config.items() if k in default_dataset_config.keys()}
+        metrics_config = {k: v for k, v in config.items() if k in default_metrics_config.keys()}
+
+        # Run code
+        evaluator = trackeval.Evaluator(eval_config)
+        dataset_list = [trackeval.datasets.MotChallenge2DBox(dataset_config)] if opts.datasets in ['mot', 'uavdt'] else [trackeval.datasets.VisDrone2DBox(dataset_config)]
+        metrics_list = []
+        for metric in [trackeval.metrics.HOTA, trackeval.metrics.CLEAR, trackeval.metrics.Identity, trackeval.metrics.VACE]:
+            if metric.get_name() in metrics_config['METRICS']:
+                metrics_list.append(metric(metrics_config))
+        if len(metrics_list) == 0:
+            raise Exception('No metrics selected for evaluation')
+        evaluator.evaluate(dataset_list, metrics_list)  
+    else:
+        evaluate(sorted(os.listdir(f'./tracker/results/{folder_name}')), 
+                    sorted([seq + '.txt' for seq in seqs]), data_type='visdrone', result_folder=folder_name)  
 
 
 def save_results(folder_name, seq_name, results, data_type='default'):
@@ -299,7 +337,7 @@ def get_color(idx):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--dataset', type=str, default='visdrone', help='visdrone, or mot')
+    parser.add_argument('--dataset', type=str, default='visdrone', help='visdrone, visdrone_car, uavdt or mot')
     parser.add_argument('--data_format', type=str, default='origin', help='format of reading dataset')
     parser.add_argument('--det_output_format', type=str, default='yolo', help='data format of output of detector, yolo or other')
 
@@ -331,10 +369,11 @@ if __name__ == '__main__':
     # detect per several frames
     parser.add_argument('--detect_per_frame', type=int, default=1, help='choose how many frames per detect')
     
+    parser.add_argument('--track_eval', type=bool, default=True, help='Use TrackEval to evaluate')
 
     opts = parser.parse_args()
-    
-    # for debug
-    # evaluate(sorted(os.listdir('./tracker/results/deepmot_17_08_02_38')), 
-    #             sorted(os.listdir('./tracker/results/deepmot_17_08_02_38')), data_type='visdrone', result_folder='deepmot_17_08_02_38')  
-    main(opts)
+
+    # NOTE: read path of datasets, sequences and TrackEval configs
+    with open(f'./tracker/config_files/{opts.dataset}.yaml', 'r') as f:
+        cfgs = yaml.load(f, Loader=yaml.FullLoader)
+    main(opts, cfgs)

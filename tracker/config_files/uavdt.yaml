@@ -1,0 +1,25 @@
+# Config file of UAVDT dataset
+
+DATASET_ROOT: '/data/wujiapeng/datasets/'  # your dataset root
+CATEGORY_NAMES:  # category names to show
+  - 'car'
+
+CATEGORY_DICT:
+  0: 'car'
+
+CERTAIN_SEQS:
+  - 'M0101'
+IGNORE_SEQS:  # Seqs you want to ignore
+  - 
+
+YAML_DICT:  './data/UAVDT.yaml'  # NOTE: ONLY for yolo v5 model loader(func DetectMultiBackend)
+  
+TRACK_EVAL:  # If use TrackEval to evaluate, use these configs
+  'DISPLAY_LESS_PROGRESS': False
+  'GT_FOLDER': '/data/wujiapeng/datasets/UAVDT/UAV-benchmark-M'
+  'TRACKERS_FOLDER': './tracker/results'
+  'SKIP_SPLIT_FOL': True
+  'TRACKER_SUB_FOLDER': ''
+  'SEQ_INFO': 
+    'M0101': 407
+  'GT_LOC_FORMAT': '{gt_folder}/{seq}/gt/gt.txt'
