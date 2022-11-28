@@ -210,7 +210,7 @@ def main(opts, cfgs):
 
         # Run code
         evaluator = trackeval.Evaluator(eval_config)
-        dataset_list = [trackeval.datasets.MotChallenge2DBox(dataset_config)] if opts.datasets in ['mot', 'uavdt'] else [trackeval.datasets.VisDrone2DBox(dataset_config)]
+        dataset_list = [trackeval.datasets.MotChallenge2DBox(dataset_config)] if opts.dataset in ['mot', 'uavdt'] else [trackeval.datasets.VisDrone2DBox(dataset_config)]
         metrics_list = []
         for metric in [trackeval.metrics.HOTA, trackeval.metrics.CLEAR, trackeval.metrics.Identity, trackeval.metrics.VACE]:
             if metric.get_name() in metrics_config['METRICS']:
