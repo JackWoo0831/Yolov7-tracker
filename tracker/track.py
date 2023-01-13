@@ -20,6 +20,7 @@ from deepmot import DeepMOT
 from botsort import BoTSORT
 from uavmot import UAVMOT
 from strongsort import StrongSORT
+from c_biou_tracker import C_BIoUTracker
 
 try:  # import package that outside the tracker folder  For yolo v7
     import sys 
@@ -58,6 +59,7 @@ def main(opts, cfgs):
         'botsort': BoTSORT,
         'uavmot': UAVMOT, 
         'strongsort': StrongSORT, 
+        'c_biou': C_BIoUTracker,
     }  # dict for trackers, key: str, value: class(BaseTracker)
 
     # NOTE: ATTENTION: make kalman and tracker compatible
