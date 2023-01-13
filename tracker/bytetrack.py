@@ -165,7 +165,7 @@ class ByteTrack(BaseTracker):
         """ Step 4. deal with rest tracks and dets"""
         # deal with final unmatched tracks
         for idx in u_tracks1_idx:
-            track = strack_pool[idx]
+            track = u_tracks0[idx]
             track.mark_lost()
             lost_stracks.append(track)
         

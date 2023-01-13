@@ -380,3 +380,25 @@ def structure_representation(tracks,mode='trcak'):
         structure_matrix.append(v)
 
     return np.asarray(structure_matrix)
+
+"""
+calculate buffered IoU, used in C_BIoU_Tracker
+"""
+def buffered_iou_distance(atracks, btracks, level=1):
+    """
+    atracks: list[C_BIoUSTrack], tracks
+    btracks: list[C_BIoUSTrack], detections
+    level: cascade level, 1 or 2
+    """
+    assert level in [1, 2], 'level must be 1 or 2'
+    if level == 1:  # use motion_state1(tracks) and buffer_bbox1(detections) to calculate
+        atlbrs = [track.tlwh2tlbr(track.motion_state1) for track in atracks]
+        btlbrs = [det.tlwh2tlbr(det.buffer_bbox1) for det in btracks]
+    else:
+        atlbrs = [track.tlwh2tlbr(track.motion_state2) for track in atracks]
+        btlbrs = [det.tlwh2tlbr(det.buffer_bbox2) for det in btracks]
+    _ious = ious(atlbrs, btlbrs)
+
+    cost_matrix = 1 - _ious
+    return cost_matrix
+    
