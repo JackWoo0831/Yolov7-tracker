@@ -31,6 +31,7 @@ ByteTrack([ECCV2022](https://arxiv.org/pdf/2110.06864)),
 DeepMOT([CVPR2020](https://openaccess.thecvf.com/content_CVPR_2020/papers/Xu_How_to_Train_Your_Deep_Multi-Object_Tracker_CVPR_2020_paper.pdf)),  
 BoT-SORT([arxiv2206](https://arxiv.org/pdf/2206.14651.pdf)),   
 UAVMOT([CVPR2022](https://openaccess.thecvf.com/content/CVPR2022/papers/Liu_Multi-Object_Tracking_Meets_Moving_UAV_CVPR_2022_paper.pdf))
+C_BIoUTracker([arxiv2211](https://arxiv.org/pdf/2211.14317v2.pdf))
 
 
 ## TODO
