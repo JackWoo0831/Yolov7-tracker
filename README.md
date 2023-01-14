@@ -2,6 +2,8 @@
 
 ## 更新记录
 
+**2023.1.14**加入了当前DanceTrack的SOTA[C_BIoUTracker](https://arxiv.org/pdf/2211.14317v2.pdf), 该论文提出了一种增广的IoU来避免目标的瞬间大范围移动, 且弃用了Kalman滤波. 该代码没有开源, 我是按照自己的理解进行了复现. **有错误非常欢迎指出**.  
+
 **2022.11.26**加入了[TrackEval](https://github.com/JonathonLuiten/TrackEval)评测的方式, 支持MOT, VisDrone和UAVDT三种数据集. 此外将一些路径变量选择了按照`yaml`的方式读取, 尽量让代码可读性高一些. 如果您不想用TrackEval进行评测, 则可以将`track.py`或`track_yolov5.py`的命令配置代码`parser.add_argument('--track_eval', type=bool, default=True, help='Use TrackEval to evaluate')`改为`False`.
 
 **2022.11.10**更新了如何设置数据集路径的说明, 请参见README的`track.py路径读取说明`部分.
@@ -172,6 +174,11 @@ python tracker/track.py --dataset visdrone --data_format origin --tracker uavmot
 ***StrongSORT***(目前有问题 正在修复)
 ```shell
 python tracker/track.py --dataset visdrone --data_format origin --tracker strongsort --model_path runs/train/yolov7-w6-custom4/weights/best.pt --reid_model_path weights/osnet_x1_0.pth
+```
+
+***C_BIoUTracker***
+```shell
+python tracker/track.py --dataset visdrone --data_format origin --tracker c_biou --model_path runs/train/yolov7-w6-custom4/weights/best.pt
 ```
 
 > StrongSORT中OSNet的下载地址, 请参照https://github.com/mikel-brostrom/Yolov5_StrongSORT_OSNet/blob/master/strong_sort/deep/reid_model_factory.py
