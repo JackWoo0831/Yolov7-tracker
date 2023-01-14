@@ -331,9 +331,9 @@ if __name__ == '__main__':
     parser.add_argument('--data_format', type=str, default='origin', help='format of reading dataset')
     parser.add_argument('--det_output_format', type=str, default='yolo', help='data format of output of detector, yolo or other')
 
-    parser.add_argument('--tracker', type=str, default='bytetrack', help='sort, deepsort, etc')
+    parser.add_argument('--tracker', type=str, default='sort', help='sort, deepsort, etc')
 
-    parser.add_argument('--model_path', type=str, default=None, help='model path')
+    parser.add_argument('--model_path', type=str, default='./weights/best.pt', help='model path')
     parser.add_argument('--trace', type=bool, default=False, help='traced model of YOLO v7')
 
     parser.add_argument('--img_size', nargs='+', type=int, default=[1280, 1280], help='[train, test] image sizes')

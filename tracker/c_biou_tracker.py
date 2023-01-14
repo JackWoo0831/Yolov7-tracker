@@ -34,8 +34,9 @@ class C_BIoUSTrack(BaseTrack):
         self.time_since_update = 0  # \delta in paper, use to calculate motion state
         
         # params in motion state
-        self.b1, self.b2, self.n = 0.3, 0.5, 2
+        self.b1, self.b2, self.n = 0.3, 0.5, 5
         self.origin_bbox_buffer = deque()  # a deque store the original bbox(tlwh) from t - self.n to t, where t is the last time detected
+        self.origin_bbox_buffer.append(self._tlwh)
         # buffered bbox, two buffer sizes
         self.buffer_bbox1 = self.get_buffer_bbox(level=1)
         self.buffer_bbox2 = self.get_buffer_bbox(level=2)
@@ -54,7 +55,7 @@ class C_BIoUSTrack(BaseTrack):
 
         b = self.b1 if level == 1 else self.b2
 
-        if not bbox:
+        if bbox is None:
             buffer_bbox = self._tlwh + np.array([-b*self._tlwh[2], -b*self._tlwh[3], 2*b*self._tlwh[2], 2*b*self._tlwh[3]])
         else:
             buffer_bbox = bbox + np.array([-b*bbox[2], -b*bbox[3], 2*b*bbox[2], 2*b*bbox[3]])
@@ -63,8 +64,14 @@ class C_BIoUSTrack(BaseTrack):
 
     @property
     def tlbr(self):
-        ret = self._tlwh.copy()
+        ret = self.origin_bbox_buffer[-1].copy()
         ret[2:] += ret[:2]
+        return ret
+
+    @property
+    def tlwh(self):
+        ret = self.origin_bbox_buffer[-1].copy()
+        
         return ret
 
     def activate(self, frame_id):
@@ -93,6 +100,13 @@ class C_BIoUSTrack(BaseTrack):
         self.score = new_track.score
 
         self._tlwh = new_track._tlwh
+        # update stored bbox
+        if (len(self.origin_bbox_buffer) > self.n):
+            self.origin_bbox_buffer.popleft()
+            self.origin_bbox_buffer.append(self._tlwh)
+        else:
+            self.origin_bbox_buffer.append(self._tlwh)
+
         self.buffer_bbox1 = self.get_buffer_bbox(level=1)
         self.buffer_bbox2 = self.get_buffer_bbox(level=2)
         self.motion_state1 = self.buffer_bbox1.copy()
@@ -107,10 +121,11 @@ class C_BIoUSTrack(BaseTrack):
 
         # update position and score
         new_tlwh = new_track.tlwh
+        self._tlwh = new_tlwh
         self.score = new_track.score
         
         # update stored bbox
-        if (self.frame_id > self.n):
+        if (len(self.origin_bbox_buffer) > self.n):
             self.origin_bbox_buffer.popleft()
             self.origin_bbox_buffer.append(new_tlwh)
         else:
@@ -118,7 +133,7 @@ class C_BIoUSTrack(BaseTrack):
 
         # update motion state
         if self.time_since_update:  # have some unmatched frames
-            if self.frame_id < self.n:
+            if len(self.origin_bbox_buffer) < self.n:
                 self.motion_state1 = self.get_buffer_bbox(level=1, bbox=new_tlwh)
                 self.motion_state2 = self.get_buffer_bbox(level=2, bbox=new_tlwh)
             else:  # s^{t + \delta} = o^t + (\delta / n) * (o^t - o^{t - n})
@@ -257,7 +272,7 @@ class C_BIoUTracker(BaseTracker):
                 refind_stracks.append(track)
 
         # tracks and detections that not matched
-        u_tracks0 = [strack_pool[i] for i in u_tracks0_idx]
+        u_tracks0 = [strack_pool[i] for i in u_tracks0_idx if strack_pool[i].state == TrackState.Tracked]
         u_dets0 = [detections[i] for i in u_dets0_idx]
 
         """step 3. association with IoU in level 2"""
