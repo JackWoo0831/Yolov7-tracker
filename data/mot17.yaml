@@ -1,0 +1,7 @@
+train: ./mot17/train.txt
+val: ./mot17/val.txt
+test: ./mot17/val.txt
+
+nc: 1
+
+names: ['pedestrain']

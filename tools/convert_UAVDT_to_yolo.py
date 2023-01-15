@@ -103,7 +103,7 @@ def process_train_test(seqs: list, frame_range: dict, cat_id: int = 0, split: st
 
             gt_to_file = osp.join(gt_to_path, img[:-4] + '.txt')
 
-            with open(gt_to_file, 'a') as f_gt:
+            with open(gt_to_file, 'w') as f_gt:
                 for i in range(ann_of_current_frame.shape[0]):    
                     if int(ann_of_current_frame[i][6]) == 1:
                         # bbox xywh 
@@ -141,8 +141,11 @@ def process_train_test(seqs: list, frame_range: dict, cat_id: int = 0, split: st
     
 
 if __name__ == '__main__':
-    if osp.exists('./uavdt'):
-        os.system('rm -rf ./uavdt')
+    if not osp.exists('./uavdt'):
+        os.system('mkdir ./uavdt')
+    else:
+        os.system('rm -rf ./uavdt/*')
+    
     parser = argparse.ArgumentParser()
     parser.add_argument('--generate_imgs', action='store_true', help='whether generate soft link of imgs')
     parser.add_argument('--certain_seqs', action='store_true', help='for debug')

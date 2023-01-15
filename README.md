@@ -1,6 +1,8 @@
 # YOLO v7 + 各种tracker实现多目标跟踪
 
-## 更新记录
+## 0. 更新记录
+
+**2023.1.15**加入了**MOT17数据集**的训练与测试功能, 增加了MOT17转yolo格式的代码(`./tools/convert_MOT17_to_yolo.py`), 转换的过程中强制使得坐标合法, 且忽略了遮挡率>=0.75的目标. 您可以采用此代码转换并训练, 具体请见后面的说明. 在使用tracker的时候, 注意将`data_format`设置为yolo, 这样可以直接根据txt文件的路径读取图片.  
 
 **2023.1.14**加入了当前DanceTrack的SOTA[C_BIoUTracker](https://arxiv.org/pdf/2211.14317v2.pdf), 该论文提出了一种增广的IoU来避免目标的瞬间大范围移动, 且弃用了Kalman滤波. 该代码没有开源, 我是按照自己的理解进行了复现. **有错误非常欢迎指出**.  
 
@@ -19,12 +21,12 @@
 **2022.09.27**修复了STrack类中update不更新外观的问题, 代码有较大更改, **您可能需要重新下载```./tracker```文件夹**. 
 尝试加入StrongSORT, 但是目前还不work:(, 尽力调一调
 
-## 亮点  
+## 1. 亮点  
 1. 统一代码风格, 对多种tracker重新整理, 详细注释, 方便阅读, 适合初学者 
 2. 多类多目标跟踪 
 3. 各种tracker集成在一个文件夹"./tracker/"内, 方便移植到其他detector.  
 
-## 集成的tracker:
+## 2. 集成的tracker:
 SORT,  
 DeepSORT,  
 ByteTrack([ECCV2022](https://arxiv.org/pdf/2110.06864)),  
@@ -34,14 +36,17 @@ UAVMOT([CVPR2022](https://openaccess.thecvf.com/content/CVPR2022/papers/Liu_Mult
 C_BIoUTracker([arxiv2211](https://arxiv.org/pdf/2211.14317v2.pdf))
 
 
-## TODO
+## 3. TODO
 - [x] 集成UAVMOT([CVPR2022](https://openaccess.thecvf.com/content/CVPR2022/papers/Liu_Multi-Object_Tracking_Meets_Moving_UAV_CVPR_2022_paper.pdf))
 - [ ] 达到更好的结果(缓解类别不平衡, 小目标等等)...
-- [ ] MOT challenge数据集
+- [x] MOT challenge数据集
 - [x] 更换Re-ID模型(更换了OSNet, 效果不好...)
 
 
-## 效果
+## 4. 效果
+
+### VisDrone
+
 在VisDrone2019-MOT train训练约10 epochs, 采用YOLO v7 w6结构, COCO预训练模型基础上训练. GPU: single Tesla A100, 每个epoch约40min.  
 在VisDrone2019-MOT test dev测试, 跟踪所有的类别. 
 
@@ -62,13 +67,21 @@ YOLO v7 VisDrone训练完模型:
 
 ![gif](https://github.com/JackWoo0831/Yolov7-tracker/blob/master/test2.gif)
 
-## 环境配置  
+### MOT17
+
+在MOT17 train训练约15epochs, 采用YOLO v7 w6结构, COCO预训练模型基础上训练. GPU: single Tesla A100, 每个epoch约3.5min.
+
+这是在测试集03序列的C_BIoU Tracker的效果:  
+
+![gif](https://github.com/JackWoo0831/Yolov7-tracker/blob/master/C_BIoU2.gif)
+
+## 5. 环境配置  
 - python=3.7.0 pytorch=1.7.0 torchvision=0.8.0 cudatoolkit=11.0
 - [py-motmetrics](https://github.com/cheind/py-motmetrics)  (`pip install motmetrics`)
 - cython-bbox (`pip install cython_bbox`)
 - opencv
 
-## 训练
+## 6. 训练
 
 训练遵循YOLO v7的训练方式, 数据集格式可以参照[YOLO v5 train custom data](https://github.com/ultralytics/yolov5/wiki/Train-Custom-Data)  
 即数据集文件遵循
@@ -88,7 +101,7 @@ python train_aux.py --dataset visdrone --workers 8 --device <$GPU_id$> --batch-s
 ```  
 > 更多训练信息参考[YOLO v7](https://github.com/WongKinYiu/yolov7)
 
-## `track.py`路径读取说明  
+## 7. `track.py`路径读取说明  
 
 通常来讲, 一个MOT数据集的目录结构大概遵循`划分(训练、测试等)---序列---图片与标注`的结构, 如下所示:
 
@@ -136,7 +149,9 @@ VisDrone2019/images/VisDrone2019-MOT-test-dev/uav0000120_04775_v/0000001.jpg
 
 
 
-## 跟踪  
+## 8. 跟踪  
+
+
 
 ***在跟踪之前***, 您需要选择读取数据的方式, 即`opts.data_format`参数, 如果选择`yolo`格式, 您需要在工程根目录下按照`yolo`的方式(例如本仓库的`./visdrone/test.txt`), 您需要修改`track.py`中的`DATA_ROOT`等变量, 与`test.txt`中的路径配合起来. 如果使用数据集原本的路径, 要根据数据集本身的路径特点进行调整. 一是`track.py`中的路径变量, 二是`track_dataloder.py`中`TrackerLoader`类的初始化函数中的路径.  
 
@@ -182,6 +197,14 @@ python tracker/track.py --dataset visdrone --data_format origin --tracker strong
 python tracker/track.py --dataset visdrone --data_format origin --tracker c_biou --model_path runs/train/yolov7-w6-custom4/weights/best.pt
 ```
 
+***MOT17数据集***: 与下面的命令一致:
+
+```shell
+python tracker/track.py --dataset mot17 --data_format yolo --tracker ${TRACKER} --model_path ${MODEL_PATH}
+```
+
+
+
 > StrongSORT中OSNet的下载地址, 请参照https://github.com/mikel-brostrom/Yolov5_StrongSORT_OSNet/blob/master/strong_sort/deep/reid_model_factory.py
 
 > 您也可以通过增加
@@ -190,7 +213,7 @@ python tracker/track.py --dataset visdrone --data_format origin --tracker c_biou
 > ```
 > 来控制保存跟踪结果的图片与视频.  
 
-## 将./tracker应用于其他detector  
+## 9. 将./tracker应用于其他detector  
 
 只需保证detector的输出格式为  
 ```shell

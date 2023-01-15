@@ -51,3 +51,12 @@ python tracker/track.py --dataset visdrone --data_format origin --tracker botsor
 
 ## uavmot 
 python tracker/track.py --dataset visdrone --data_format origin --tracker uavmot --model_path runs/train/yolov7-w6-custom4/weights/best.pt
+
+
+
+# MOT17
+train:
+CUDA_VISIBLE_DEVICES=0 python train_aux.py --dataset mot17 --workers 8 --device 0 --batch-size 16 --data data/mot17.yaml --img 1280 1280 --cfg cfg/training/yolov7-w6.yaml --weights './weights/yolov7-w6_training.pt' --name yolov7-w6-custom --hyp data/hyp.scratch.custom.yaml
+
+track:
+python tracker/track.py --dataset mot17 --data_format yolo --tracker sort --model_path runs/train/yolov7-w6-custom3/weights/best.pt --save_images

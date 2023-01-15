@@ -1,0 +1,31 @@
+# Config file of MOT17 dataset
+
+DATASET_ROOT: '/data/wujiapeng/datasets/'  # your dataset root
+CATEGORY_NAMES:  # category names to show
+  - 'pedestrian'
+
+CATEGORY_DICT:
+  0: 'pedestrian'
+
+CERTAIN_SEQS:
+  - 
+IGNORE_SEQS:  # Seqs you want to ignore
+  - 
+
+YAML_DICT: ''  # NOTE: ONLY for yolo v5 model loader(func DetectMultiBackend)
+  
+TRACK_EVAL:  # If use TrackEval to evaluate, use these configs
+  'DISPLAY_LESS_PROGRESS': False
+  'GT_FOLDER': '/data/wujiapeng/datasets/MOT17/train'
+  'TRACKERS_FOLDER': './tracker/results'
+  'SKIP_SPLIT_FOL': True
+  'TRACKER_SUB_FOLDER': ''
+  'SEQ_INFO': 
+    'MOT17-02-SDP': null
+    'MOT17-04-SDP': null
+    'MOT17-05-SDP': null
+    'MOT17-09-SDP': null
+    'MOT17-10-SDP': null
+    'MOT17-11-SDP': null
+    'MOT17-13-SDP': null
+  'GT_LOC_FORMAT': '{gt_folder}/{seq}/gt/gt.txt'
