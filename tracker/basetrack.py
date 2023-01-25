@@ -303,7 +303,7 @@ class STrack(BaseTrack):
                 self.mean, self.cov, measurement)
 
         # update feature
-        if self.has_feature:        
+        if new_track.has_feature:        
             feature = new_track.features[0] / np.linalg.norm(new_track.features[0])  # (512, )
             if self.use_avg_of_feature:
                 smooth_feat = 0.9 * self.features[-1] + (1 - 0.9) * feature

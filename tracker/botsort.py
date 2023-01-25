@@ -400,7 +400,6 @@ class BoTSORT(BaseTracker):
         IoU_dist = matching.iou_distance(strack_pool, D_high)  # IoU dist
         if self.use_apperance_model:
             Apperance_dist = 0.5*matching.embedding_distance(strack_pool, D_high, metric='cosine')
-            Dist_mat = self.gamma*IoU_dist + (1. - self.gamma)*Apperance_dist
             # equation (12)-(13) in paper
             Apperance_dist[IoU_dist > self.theta_iou] = 1
             Apperance_dist[Apperance_dist > self.theta_emb] = 1 
@@ -455,7 +454,6 @@ class BoTSORT(BaseTracker):
         IoU_dist = matching.iou_distance(unconfirmed, u_dets0)
         if self.use_apperance_model:
             Apperance_dist = 0.5*matching.embedding_distance(unconfirmed, u_dets0, metric='cosine')
-            Dist_mat = self.gamma*IoU_dist + (1. - self.gamma)*Apperance_dist
             # equation (12)-(13) in paper
             Apperance_dist[IoU_dist > self.theta_iou] = 1
             Apperance_dist[Apperance_dist > self.theta_emb] = 1 
