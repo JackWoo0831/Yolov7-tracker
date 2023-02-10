@@ -110,6 +110,7 @@ def nearest_embedding_distance(tracks, detections, metric='cosine'):
     tracks: list[STrack]
     detections: list[STrack]
     metric: str, cosine or euclidean
+    TODO: support euclidean distance
 
     return:
     cost_matrix, np.ndarray, shape(len(tracks), len(detections))

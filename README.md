@@ -2,6 +2,8 @@
 
 ## 0. 更新记录
 
+**2023.2.10**修改了[DeepSORT](https://github.com/JackWoo0831/Yolov7-tracker/blob/master/tracker/deepsort.py)的代码与相关部分代码, 遵循了DeepSORT原论文**级联匹配和余弦距离计算**的原则, 并且解决了原有DeepSORT代码出现莫名漂移跟踪框的问题.  
+
 **2023.1.15**加入了**MOT17数据集**的训练与测试功能, 增加了MOT17转yolo格式的代码(`./tools/convert_MOT17_to_yolo.py`), 转换的过程中强制使得坐标合法, 且忽略了遮挡率>=0.75的目标. 您可以采用此代码转换并训练, 具体请见后面的说明. 在使用tracker的时候, 注意将`data_format`设置为yolo, 这样可以直接根据txt文件的路径读取图片.  
 
 **2023.1.14**加入了当前DanceTrack的SOTA[C_BIoUTracker](https://arxiv.org/pdf/2211.14317v2.pdf), 该论文提出了一种增广的IoU来避免目标的瞬间大范围移动, 且弃用了Kalman滤波. 该代码没有开源, 我是按照自己的理解进行了复现. **有错误非常欢迎指出**.  
