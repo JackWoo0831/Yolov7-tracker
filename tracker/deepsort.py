@@ -1,7 +1,7 @@
 
 import numpy as np  
 from basetrack import TrackState, STrack, BaseTracker
-from kalman_filter import KalmanFilter, NaiveKalmanFilter
+from kalman_filter import KalmanFilter, NaiveKalmanFilter, chi2inv95
 from reid_models.deepsort_reid import Extractor
 import matching
 import torch 
@@ -38,6 +38,43 @@ class DeepSORT(BaseTracker):
         else:
             features = np.array([])
         return features
+    
+    def gate_cost_matrix(self, cost_matrix, tracks, dets, max_apperance_thresh=0.15, gated_cost=1e5, only_position=False):
+        """
+        gate cost matrix by calculating the Kalman state distance and constrainted by
+        0.95 confidence interval of x2 distribution
+
+        cost_matrix: np.ndarray, shape (len(tracks), len(dets))
+        tracks: List[STrack]
+        dets: List[STrack]
+        gated_cost: a very largt const to infeasible associations
+        only_position: use [xc, yc, a, h] as state vector or only use [xc, yc]
+
+        return:
+        updated cost_matirx, np.ndarray
+        """
+        gating_dim = 2 if only_position else 4
+        gating_threshold = chi2inv95[gating_dim]
+        measurements = np.asarray([STrack.tlwh2xyah(det.tlwh) for det in dets])  # (len(dets), 4)
+
+        cost_matrix[cost_matrix > max_apperance_thresh] = gated_cost
+        for row, track in enumerate(tracks):
+            gating_distance = self.kalman.gating_distance(
+                track.mean, track.cov, measurements, only_position
+            )
+            cost_matrix[row, gating_distance > gating_threshold] = gated_cost
+        return cost_matrix
+
+    def gated_metric(self, tracks, dets):
+        """
+        get cost matrix, firstly calculate apperence cost, then filter by Kalman state.
+
+        tracks: List[STrack]
+        dets: List[STrack]
+        """
+        Apperance_dist = matching.nearest_embedding_distance(tracks=tracks, detections=dets, metric='cosine')
+        cost_matrix = self.gate_cost_matrix(Apperance_dist, tracks, dets, )
+        return cost_matrix
     
     def update(self, det_results, ori_img):
         """
@@ -85,7 +122,7 @@ class DeepSORT(BaseTracker):
                 features = self.get_feature(bbox_temp, ori_img)
 
             # detections: List[Strack]
-            detections = [STrack(cls, STrack.xywh2tlwh(xywh), score, kalman_format=self.opts.kalman_format, feature=feature)
+            detections = [STrack(cls, STrack.xywh2tlwh(xywh), score, kalman_format=self.opts.kalman_format, feature=feature, use_avg_of_feature=False)
                             for (cls, xywh, score, feature) in zip(det_results[:, -1], det_results[:, :4], det_results[:, 4], features)]
 
         else:
@@ -106,15 +143,9 @@ class DeepSORT(BaseTracker):
         # Kalman predict, update every mean and cov of tracks
         STrack.multi_predict(stracks=strack_pool, kalman=self.kalman)
 
-        # calculate apperance distance, shape:(len(strack_pool), len(detections))
-        Apperance_dist = matching.embedding_distance(tracks=strack_pool, detections=detections, metric='euclidean')
-        # calculate iou distance, shape:(len(strack_pool), len(detections))
-        IoU_dist = matching.iou_distance(atracks=strack_pool, btracks=detections)
-        # fuse
-        Dist_mat = self.gamma * IoU_dist + (1. - self.gamma) * Apperance_dist
-
         # match  thresh=0.9 is same in ByteTrack code
-        matched_pair0, u_tracks0_idx, u_dets0_idx = matching.linear_assignment(Dist_mat, thresh=0.7)
+        matched_pair0, u_tracks0_idx, u_dets0_idx = matching.matching_cascade(self.gated_metric, 0.9, self.max_time_lost, 
+                                                            strack_pool, detections)
 
         for itrack_match, idet_match in matched_pair0:
             track = strack_pool[itrack_match]
@@ -148,7 +179,6 @@ class DeepSORT(BaseTracker):
                 activated_starcks.append(track)
 
             elif track.state == TrackState.Lost:
-                exit(0)
                 track.re_activate(det, self.frame_id, )
                 refind_stracks.append(track)
 
@@ -160,10 +190,8 @@ class DeepSORT(BaseTracker):
             lost_stracks.append(track)
 
         # deal with unconfirmed tracks, match new track of last frame and new high conf det
-        Apperance_dist = matching.embedding_distance(tracks=unconfirmed, detections=u_det1, metric='euclidean')
-        IoU_dist = matching.iou_distance(atracks=unconfirmed, btracks=u_det1)
-        Dist_mat = self.gamma * IoU_dist + (1. - self.gamma) * Apperance_dist
-        matched_pair2, u_tracks2_idx, u_det2_idx = matching.linear_assignment(Dist_mat, thresh=0.7)
+        matched_pair2, u_tracks2_idx, u_det2_idx = matching.matching_cascade(self.gated_metric, 0.7, self.max_time_lost, 
+                                                                unconfirmed, u_det1)
 
         for itrack_match, idet_match in matched_pair2:
             track = unconfirmed[itrack_match]
@@ -179,7 +207,7 @@ class DeepSORT(BaseTracker):
         # deal with new tracks
         for idx in u_det2_idx:
             det = u_det1[idx]
-            if det.score > self.det_thresh + 0.1:
+            if det.score > self.det_thresh:
                 det.activate(self.frame_id)
                 activated_starcks.append(det)
 

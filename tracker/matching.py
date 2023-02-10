@@ -102,6 +102,29 @@ def embedding_distance(tracks, detections, metric='cosine'):
         raise NotImplementedError
     return cost_matrix
 
+def nearest_embedding_distance(tracks, detections, metric='cosine'):
+    """
+    different from embedding distance, this func calculate the 
+    nearest distance among all track history features and detections
+
+    tracks: list[STrack]
+    detections: list[STrack]
+    metric: str, cosine or euclidean
+
+    return:
+    cost_matrix, np.ndarray, shape(len(tracks), len(detections))
+    """
+    cost_matrix = np.zeros((len(tracks), len(detections)))
+    det_features = np.asarray([det.features[-1] for det in detections])
+
+    for row, track in enumerate(tracks):
+        track_history_features = np.asarray(track.features)
+        dist = 1. - cal_cosine_distance(track_history_features, det_features)
+        dist = dist.min(axis=0)
+        cost_matrix[row, :] = dist
+    
+    return cost_matrix
+
 def ecu_iou_distance(tracks, detections, img0_shape):
     """
     combine eculidian center-point distance and iou distance
@@ -189,90 +212,70 @@ def fuse_motion(kf, cost_matrix, tracks, detections, only_position=False, lambda
     return cost_matrix
 
 
-"""
-distance metric that combines multi-frame info
-used in StrongSORT
-TODO: use in DeepSORT
-"""
-
-class NearestNeighborDistanceMetric(object):
+def matching_cascade(
+        distance_metric, matching_thresh, cascade_depth, tracks, detections,
+        track_indices=None, detection_indices=None):
     """
-    A nearest neighbor distance metric that, for each target, returns
-    the closest distance to any sample that has been observed so far.
+    Run matching cascade in DeepSORT
 
-    Parameters
-    ----------
-    metric : str
-        Either "euclidean" or "cosine".
-    matching_threshold: float
-        The matching threshold. Samples with larger distance are considered an
-        invalid match.
-    budget : Optional[int]
-        If not None, fix samples per class to at most this number. Removes
-        the oldest samples when the budget is reached.
+    distance_metirc: function that calculate the cost matrix
+    matching_thresh: float, Associations with cost larger than this value are disregarded.
+    cascade_path: int, equal to max_age of a tracklet
+    tracks: List[STrack], current tracks
+    detections: List[STrack], current detections
+    track_indices: List[int], tracks that will be calculated, Default None
+    detection_indices: List[int], detections that will be calculated, Default None
 
-    Attributes
-    ----------
-    samples : Dict[int -> List[ndarray]]
-        A dictionary that maps from target identities to the list of samples
-        that have been observed so far.
-
+    return:
+    matched pair, unmatched tracks, unmatced detections: List[int], List[int], List[int]
     """
+    if track_indices is None:
+        track_indices = list(range(len(tracks)))
+    if detection_indices is None:
+        detection_indices = list(range(len(detections)))
 
-    def __init__(self, metric, matching_threshold, budget=None):
-        if metric == "euclidean":
-            self._metric = cal_eculidian_distance
-        elif metric == "cosine":
-            self._metric = cal_cosine_distance
-        else:
-            raise ValueError(
-                "Invalid metric; must be either 'euclidean' or 'cosine'")
-        self.matching_threshold = matching_threshold
-        self.budget = budget
-        self.samples = {}
+    detections_to_match = detection_indices
+    matches = []
 
-    def partial_fit(self, features, targets, active_targets):
-        """Update the distance metric with new data.
-
-        Parameters
-        ----------
-        features : ndarray
-            An NxM matrix of N features of dimensionality M.
-        targets : ndarray
-            An integer array of associated target identities.
-        active_targets : List[int]
-            A list of targets that are currently present in the scene.
-
+    for level in range(cascade_depth):
         """
-        for feature, target in zip(features, targets):
-            self.samples.setdefault(target, []).append(feature)
-            if self.budget is not None:
-                self.samples[target] = self.samples[target][-self.budget:]
-        self.samples = {k: self.samples[k] for k in active_targets}
-
-    def distance(self, features, targets):
-        """Compute distance between features and targets.
-
-        Parameters
-        ----------
-        features : ndarray
-            An NxM matrix of N features of dimensionality M.
-        targets : List[int]
-            A list of targets to match the given `features` against.
-
-        Returns
-        -------
-        ndarray
-            Returns a cost matrix of shape len(targets), len(features), where
-            element (i, j) contains the closest squared distance between
-            `targets[i]` and `features[j]`.
-
+        match new track with detection firstly
         """
-        cost_matrix = np.zeros((len(targets), len(features)))
-        for i, target in enumerate(targets):
-            cost_matrix[i, :] = self._metric(self.samples[target], features)
-        return cost_matrix
+        if not len(detections_to_match):  # No detections left
+            break
 
+        track_indices_l = [
+            k for k in track_indices
+            if tracks[k].time_since_update == 1 + level
+        ]  # filter tracks whose age is equal to level + 1 (The age of Newest track = 1)
+
+        if not len(track_indices_l):  # Nothing to match at this level
+            continue
+        
+        # tracks and detections which will be mathcted in current level
+        track_l = [tracks[idx] for idx in track_indices_l]  # List[STrack]
+        det_l = [detections[idx] for idx in detections_to_match]  # List[STrack]
+
+        # calculate the cost matrix
+        cost_matrix = distance_metric(track_l, det_l)
+
+        # solve the linear assignment problem
+        matched_row_col, umatched_row, umatched_col = \
+            linear_assignment(cost_matrix, matching_thresh)
+        
+        for row, col in matched_row_col:  # for those who matched
+            matches.append((track_indices_l[row], detections_to_match[col]))
+
+        umatched_detecion_l = []  # current detections not matched
+        for col in umatched_col:  # for detections not matched
+            umatched_detecion_l.append(detections_to_match[col])
+        
+        detections_to_match = umatched_detecion_l  # update detections to match for next level
+    unmatched_tracks = list(set(track_indices) - set(k for k, _ in matches))
+
+    return matches, unmatched_tracks, detections_to_match
+
+    
 
 """
 funcs to cal similarity, copied from UAVMOT

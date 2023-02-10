@@ -73,7 +73,7 @@ General class to describe a trajectory
 """
 class STrack(BaseTrack):
     def __init__(self, cls, tlwh, score, kalman_format='default', 
-        feature=None, use_avg_of_feature=True) -> None:
+        feature=None, use_avg_of_feature=True, store_features_budget=100) -> None:
         """
         cls: category of this obj 
         tlwh: positoin   score: conf score 
@@ -95,6 +95,7 @@ class STrack(BaseTrack):
         self.time_since_update = None
 
         self.features = []
+        self.store_features_budget = store_features_budget
         self.has_feature = True if feature is not None else False
         self.use_avg_of_feature = use_avg_of_feature
         if feature is not None:
@@ -230,6 +231,8 @@ class STrack(BaseTrack):
         self.frame_id = frame_id
         self.start_frame = frame_id
 
+        self.time_since_update = 0
+
     def predict(self):
         """
         kalman predict step
@@ -254,6 +257,8 @@ class STrack(BaseTrack):
                 stracks[i].mean = mean
                 stracks[i].cov = cov
 
+        for strack in stracks: strack.time_since_update += 1
+
     def re_activate(self, new_track, frame_id, new_id=False):
         """
         reactivate a lost track
@@ -274,6 +279,8 @@ class STrack(BaseTrack):
         if new_id:
             self.track_id = self.next_id()
         self.score = new_track.score
+
+        self.time_since_update = 0
 
     def update(self, new_track, frame_id):
         """
@@ -311,12 +318,14 @@ class STrack(BaseTrack):
                 self.features = [smooth_feat]  # as new feature
             else:
                 self.features.append(feature)
+                self.features = self.features[-self.store_features_budget: ]
         
 
         # update status
         self.state = TrackState.Tracked
         self.is_activated = True
 
+        self.time_since_update = 0
         
 
 """

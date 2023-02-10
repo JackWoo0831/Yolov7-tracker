@@ -61,3 +61,4 @@ CUDA_VISIBLE_DEVICES=0 python train_aux.py --dataset mot17 --workers 8 --device 
 track:
 python tracker/track.py --dataset mot17 --data_format yolo --tracker sort --model_path runs/train/yolov7-w6-custom3/weights/best.pt --save_images
 python tracker/track.py --dataset mot17 --data_format yolo --tracker bytetrack --model_path weights/best.pt --save_images
+python tracker/track.py --dataset mot17 --data_format yolo --tracker deepsort --model_path weights/best.pt --save_images
