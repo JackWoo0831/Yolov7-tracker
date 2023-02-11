@@ -106,6 +106,8 @@ def main(opts, cfgs):
         raise NotImplementedError
     seqs = sorted(seqs)
     seqs = [seq for seq in seqs if seq not in IGNORE_SEQS]
+
+    if not None in CERTAIN_SEQS: seqs = CERTAIN_SEQS  # if only track some certain seqs
     print(f'Seqs will be evalueated, total{len(seqs)}:')
     print(seqs)
 
@@ -205,6 +207,14 @@ def main(opts, cfgs):
         default_eval_config = trackeval.Evaluator.get_default_eval_config()
         default_dataset_config = trackeval.datasets.MotChallenge2DBox.get_default_dataset_config()
         yaml_dataset_config = cfgs['TRACK_EVAL']  # read yaml file to read TrackEval configs
+        # make sure that seqs is same as 'SEQ_INFO' in yaml
+        # delete key in 'SEQ_INFO' which is not in seqs
+        seqs_in_cfgs = list(yaml_dataset_config['SEQ_INFO'].keys())
+        for k in seqs_in_cfgs:
+            if k not in seqs:
+                yaml_dataset_config['SEQ_INFO'].pop(k)
+        assert len(yaml_dataset_config['SEQ_INFO'].keys()) == len(seqs)
+        
         for k in default_dataset_config.keys():
             if k in yaml_dataset_config.keys():  # if the key need to be modified
                 default_dataset_config[k] = yaml_dataset_config[k]                
