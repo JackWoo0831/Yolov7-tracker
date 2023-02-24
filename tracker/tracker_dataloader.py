@@ -18,17 +18,19 @@ def letterbox(img, height=608, width=1088, color=(127.5, 127.5, 127.5)):  # resi
 
 
 class TrackerLoader(torch.utils.data.Dataset):
-    def __init__(self, path, img_size=1280, format='origin', seq=None) -> None:
+    def __init__(self, path, img_size=1280, format='origin', seq=None, convert_and_norm=True) -> None:
         """
         Load images for EACH SEQUENCE
         path: file for img paths(format == 'yolo') or dataset path(format == 'origin')
         img_size: image size for model, tuple or int
         format: 'origin' or 'yolo'. origin for direct read imgs under seqs, yolo for read imgs by train.txt
+        convert_and_norm: whether convert origin image from (H, W, C) to (C, H, W) and normed between(0, 1)
         """
         super().__init__()
         self.DATA_ROOT = '/data/wujiapeng/datasets/' if format == 'yolo' else path  # to get image
         self.img_files = []
         self.format = format
+        self.convert_and_norm = convert_and_norm
         if format == 'origin':
             assert os.path.isdir(path), f'your path is {path}, path must be your dataset path'
            
@@ -66,15 +68,16 @@ class TrackerLoader(torch.utils.data.Dataset):
         img = cv2.imread(current_img_path)  # (H, W, C)
 
         assert img is not None, f'Fail to load image{current_img_path}'
-
+        
         # img_resized, *_ = letterbox(img, self.height, self.width)
         img_resized = cv2.resize(img, (self.width, self.height))
 
-        # convert BGR to RGB and to (C, H, W)
-        img_resized = img_resized[:, :, ::-1].transpose(2, 0, 1)
+        if self.convert_and_norm:
+            # convert BGR to RGB and to (C, H, W)
+            img_resized = img_resized[:, :, ::-1].transpose(2, 0, 1)
 
-        img_resized = np.ascontiguousarray(img_resized, dtype=np.float32)
-        img_resized /= 255.0
+            img_resized = np.ascontiguousarray(img_resized, dtype=np.float32)
+            img_resized /= 255.0
 
         return torch.from_numpy(img_resized), torch.from_numpy(img)
 

@@ -2,6 +2,14 @@
 
 ## 0. 更新记录
 
+**2023.2.24**加入了**推理单个视频或图片文件夹**以及**YOLO v8**的推理功能, 对应的代码为`tracker/track_demo.py`与`tracker/track_yolov8.py`.  推理单个视频或图片文件夹不需要指定数据集与真值, 也没有评测指标的功能, 只需要在命令行中指定`obj`即可, 例如:
+
+```shell
+python tracker/track_demo.py --obj demo.mp4 
+```
+YOLO v8 代码的参数与之前完全相同. 安装YOLO v8以及训练步骤请参照[YOLO v8](https://github.com/ultralytics/ultralytics)  
+
+
 **2023.2.11**修复了TrackEval路径报错的问题, 详见[issue35](https://github.com/JackWoo0831/Yolov7-tracker/issues/35)  
 
 **2023.2.10**修改了[DeepSORT](https://github.com/JackWoo0831/Yolov7-tracker/blob/master/tracker/deepsort.py)的代码与相关部分代码, 遵循了DeepSORT原论文**级联匹配和余弦距离计算**的原则, 并且解决了原有DeepSORT代码出现莫名漂移跟踪框的问题.  
@@ -207,6 +215,11 @@ python tracker/track.py --dataset visdrone --data_format origin --tracker c_biou
 python tracker/track.py --dataset mot17 --data_format yolo --tracker ${TRACKER} --model_path ${MODEL_PATH}
 ```
 
+***推理单个视频或图片序列***:
+
+```shell
+python tracker/track_demo.py --obj demo.mp4 
+```
 
 
 > StrongSORT中OSNet的下载地址, 请参照https://github.com/mikel-brostrom/Yolov5_StrongSORT_OSNet/blob/master/strong_sort/deep/reid_model_factory.py
