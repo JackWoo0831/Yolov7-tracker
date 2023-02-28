@@ -35,8 +35,9 @@ try:  # import package that outside the tracker folder  For yolo v7
 except:
     pass
 
-SAVE_FOLDER = 'demo_result'
-CATEGORY_DICT = {0: 'car'}
+SAVE_FOLDER = 'demo_result'  # NOTE: set your save path here
+CATEGORY_DICT = {0: 'car'}  # NOTE: set the categories in your videos here, 
+# format: class_id(start from 0): class_name
 
 timer = Timer()
 seq_fps = []  # list to store time used for every seq
@@ -81,42 +82,16 @@ def main(opts):
     resized_images_queue = []  # List[torch.Tensor] store resized images
     images_queue = []  # List[torch.Tensor] store origin images
 
-    """
-    func: resize a frame to target size
-    """
-    def resize_a_frame(frame, target_size):
-        # resize to input to the YOLO net
-        frame_resized = cv2.resize(frame, (target_size[0], target_size[1]))  # (H', W', C)
-        # convert BGR to RGB and to (C, H, W)
-        frame_resized = frame_resized[:, :, ::-1].transpose(2, 0, 1)
-
-        frame_resized = np.ascontiguousarray(frame_resized, dtype=np.float32)
-        frame_resized /= 255.0
-
-        frame_resized = torch.from_numpy(frame_resized)
-
-        return frame_resized
-
+    # check path
+    assert os.path.exists(obj_name), 'the path does not exist! '
+    obj, get_next_frame = None, None  # init obj
     if 'mp4' in opts.obj:  # if it is a video
-        assert os.path.exists(obj_name), 'the path does not exist! '
-        
-        video = cv2.VideoCapture(obj_name) 
-        while True:
-            result, frame = video.read()  # frame: np.ndarray, shape (H, W, C)
-            if not result: break  # end to the video
-            frame_resized = resize_a_frame(frame, [opts.img_size, opts.img_size])
-
-            resized_images_queue.append(frame_resized)
-            images_queue.append(frame)
+        obj = cv2.VideoCapture(obj_name) 
+        get_next_frame = lambda _ : obj.read()
+    
     else:  
-        assert os.path.exists(obj_name), 'the path does not exist! '
-        frames = os.listdir(obj_name)
-        for item in frames:
-            frame = cv2.imread(item)
-            frame_resized = resize_a_frame(frame, [opts.img_size, opts.img_size])
-
-            resized_images_queue.append(frame_resized)
-            images_queue.append(frame)
+        obj = my_queue(os.listdir(obj_name))
+        get_next_frame = lambda _ : obj.pop_front()
 
 
     """
@@ -125,9 +100,18 @@ def main(opts):
     tracker = TRACKER_DICT[opts.tracker](opts, frame_rate=30, gamma=opts.gamma)  # instantiate tracker  TODO: finish init params
     results = []  # store current seq results
     frame_id = 0
-    pbar = tqdm.tqdm(desc="demo--", ncols=80)
-    for i, (img, img0) in enumerate(zip(resized_images_queue, images_queue)):
-        pbar.update()
+
+    while True:
+        print(f'----------processing frame {frame_id}----------')
+
+        # end condition
+        is_valid, img0 = get_next_frame(None)  # img0: (H, W, C)
+
+        if not is_valid: 
+            break  # end of reading 
+
+        img = resize_a_frame(img0, [opts.img_size, opts.img_size])
+
         timer.tic()  # start timing this img
         img = img.unsqueeze(0)  # （C, H, W) -> (bs == 1, C, H, W)
         out = model(img.to(device))  # model forward             
@@ -171,9 +155,8 @@ def main(opts):
     
         frame_id += 1
 
-    seq_fps.append(i / timer.total_time)  # cal fps for current seq
+    seq_fps.append(frame_id / timer.total_time)  # cal fps for current seq
     timer.clear()  # clear for next seq
-    pbar.close()
     # thirdly, save results
     # every time assign a different name
     if opts.save_txt: save_results(obj_name, '', results)
@@ -181,7 +164,46 @@ def main(opts):
     ## finally, save videos
     save_videos(obj_name)
 
+
+class my_queue:
+    """
+    implement a queue for image seq reading
+    """
+    def __init__(self, arr: list) -> None:
+        self.arr = arr 
+        self.start_idx = 0
+
+    def push_back(self, item):
+        self.arr.append(item)
     
+    def pop_front(self):
+        ret = cv2.imread(self.arr[self.start_idx])
+        self.start_idx += 1
+        return not self.is_empty(), ret
+    
+    def is_empty(self):
+        return self.start_idx == len(self.arr)
+
+
+def resize_a_frame(frame, target_size):
+    """
+    resize a frame to target size
+
+    frame: np.ndarray, shape (H, W, C)
+    target_size: List[int, int] | Tuple[int, int]
+    """
+    # resize to input to the YOLO net
+    frame_resized = cv2.resize(frame, (target_size[0], target_size[1]))  # (H', W', C)
+    # convert BGR to RGB and to (C, H, W)
+    frame_resized = frame_resized[:, :, ::-1].transpose(2, 0, 1)
+
+    frame_resized = np.ascontiguousarray(frame_resized, dtype=np.float32)
+    frame_resized /= 255.0
+
+    frame_resized = torch.from_numpy(frame_resized)
+
+    return frame_resized
+
 
 def save_results(obj_name, results, data_type='default'):
     """
@@ -227,7 +249,7 @@ def plot_img(img, frame_id, results, save_dir):
         # draw a rect
         cv2.rectangle(img_, tlbr[:2], tlbr[2:], get_color(id), thickness=3, )
         # note the id and cls
-        text = f'{CATEGORY_DICT[cls]}-{id}'
+        text = f'car-{id}'
         cv2.putText(img_, text, (tlbr[0], tlbr[1]), fontFace=cv2.FONT_HERSHEY_PLAIN, fontScale=1, 
                         color=(255, 164, 0), thickness=2)
 
@@ -282,7 +304,7 @@ if __name__ == '__main__':
     parser.add_argument('--model_path', type=str, default='./weights/best.pt', help='model path')
     parser.add_argument('--trace', type=bool, default=False, help='traced model of YOLO v7')
 
-    parser.add_argument('--img_size', nargs='+', type=int, default=1280, help='[train, test] image sizes')
+    parser.add_argument('--img_size', type=int, default=1280, help='[train, test] image sizes')
 
     """For tracker"""
     # model path
