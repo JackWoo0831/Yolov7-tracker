@@ -249,7 +249,7 @@ def plot_img(img, frame_id, results, save_dir):
         # draw a rect
         cv2.rectangle(img_, tlbr[:2], tlbr[2:], get_color(id), thickness=3, )
         # note the id and cls
-        text = f'car-{id}'
+        text = f'{CATEGORY_DICT[cls]}-{id}'
         cv2.putText(img_, text, (tlbr[0], tlbr[1]), fontFace=cv2.FONT_HERSHEY_PLAIN, fontScale=1, 
                         color=(255, 164, 0), thickness=2)
 
