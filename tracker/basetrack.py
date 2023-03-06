@@ -1,7 +1,7 @@
 """
 Copyed from ByteTrack
 """
-from numba import jit
+# from numba import jit
 
 import numpy as np
 from collections import OrderedDict
