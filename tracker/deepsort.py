@@ -190,8 +190,8 @@ class DeepSORT(BaseTracker):
             lost_stracks.append(track)
 
         # deal with unconfirmed tracks, match new track of last frame and new high conf det
-        matched_pair2, u_tracks2_idx, u_det2_idx = matching.matching_cascade(self.gated_metric, 0.7, self.max_time_lost, 
-                                                                unconfirmed, u_det1)
+        IoU_dist = matching.iou_distance(atracks=unconfirmed, btracks=u_det1)
+        matched_pair2, u_tracks2_idx, u_det2_idx = matching.linear_assignment(IoU_dist, thresh=0.9)
 
         for itrack_match, idet_match in matched_pair2:
             track = unconfirmed[itrack_match]

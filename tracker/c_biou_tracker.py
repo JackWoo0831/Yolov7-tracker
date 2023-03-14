@@ -146,6 +146,12 @@ class C_BIoUSTrack(BaseTrack):
             self.motion_state1 = self.get_buffer_bbox(level=1, bbox=new_tlwh)
             self.motion_state2 = self.get_buffer_bbox(level=2, bbox=new_tlwh)
 
+        # update status
+        self.state = TrackState.Tracked
+        self.is_activated = True
+
+        self.time_since_update = 0
+
     @staticmethod
     def xywh2tlbr(xywh):
         """
