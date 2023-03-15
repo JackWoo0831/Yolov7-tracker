@@ -159,7 +159,7 @@ def main(opts):
     timer.clear()  # clear for next seq
     # thirdly, save results
     # every time assign a different name
-    if opts.save_txt: save_results(obj_name, '', results)
+    if opts.save_txt: save_results(obj_name, results)
 
     ## finally, save videos
     save_videos(obj_name)
