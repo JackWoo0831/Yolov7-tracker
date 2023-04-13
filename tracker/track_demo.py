@@ -72,6 +72,7 @@ def main(opts):
         model = TracedModel(model, device, opts.img_size)
     else:
         model.to(device)
+    model.eval()
 
     """
     2. load videos or images
@@ -85,13 +86,18 @@ def main(opts):
     # check path
     assert os.path.exists(obj_name), 'the path does not exist! '
     obj, get_next_frame = None, None  # init obj
-    if 'mp4' in opts.obj:  # if it is a video
+    if 'mp4' in opts.obj or 'MP4' in opts.obj:  # if it is a video
         obj = cv2.VideoCapture(obj_name) 
         get_next_frame = lambda _ : obj.read()
+
+        if os.path.isabs(obj_name): obj_name = obj_name.split('/')[-1][:-4]
+        else: obj_name = obj_name[:-4]
     
     else:  
         obj = my_queue(os.listdir(obj_name))
         get_next_frame = lambda _ : obj.pop_front()
+
+        if os.path.isabs(obj_name): obj_name = obj_name.split('/')[-1]
 
 
     """
@@ -262,6 +268,7 @@ def save_videos(obj_name):
 
     seq_names: List[str] or str, seqs that will be generated
     """
+
     if not isinstance(obj_name, list):
         obj_name = [obj_name]
 
