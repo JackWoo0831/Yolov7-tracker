@@ -244,17 +244,15 @@ def post_process_v7(out, img_size, ori_img_size):
     return out
 
 
-def save_results(folder_name, seq_name, results, data_type='default'):
+def save_results(folder_name, seq_name, results, data_type='mot17'):
     """
     write results to txt file
 
     results: list  row format: frame id, target id, box coordinate, class(optional)
     to_file: file path(optional)
-    data_type: write data format
+    data_type: write data format, default or mot17 format.
     """
     assert len(results)
-    if not data_type == 'default':
-        raise NotImplementedError  # TODO
 
     if not os.path.exists(f'./tracker/results/{folder_name}'):
 
@@ -263,11 +261,13 @@ def save_results(folder_name, seq_name, results, data_type='default'):
     with open(os.path.join('./tracker/results', folder_name, seq_name + '.txt'), 'w') as f:
         for frame_id, target_ids, tlwhs, clses in results:
             if data_type == 'default':
-
-                # f.write(f'{frame_id},{target_id},{tlwh[0]},{tlwh[1]},\
-                #             {tlwh[2]},{tlwh[3]},{cls}\n')
+                
                 for id, tlwh, cls in zip(target_ids, tlwhs, clses):
                     f.write(f'{frame_id},{id},{tlwh[0]:.2f},{tlwh[1]:.2f},{tlwh[2]:.2f},{tlwh[3]:.2f},{int(cls)}\n')
+            
+            elif data_type == 'mot17':
+                for id, tlwh, cls in zip(target_ids, tlwhs, clses):
+                    f.write(f'{frame_id},{id},{tlwh[0]:.2f},{tlwh[1]:.2f},{tlwh[2]:.2f},{tlwh[3]:.2f},1.0,-1,-1,-1\n')
     f.close()
 
     return folder_name
@@ -359,7 +359,7 @@ if __name__ == '__main__':
     parser.add_argument('--dhn_path', type=str, default='./weights/DHN.pth', help='path of DHN path for DeepMOT')
 
     # threshs
-    parser.add_argument('--conf_thresh', type=float, default=0.5, help='filter tracks')
+    parser.add_argument('--conf_thresh', type=float, default=0.2, help='filter tracks')
     parser.add_argument('--nms_thresh', type=float, default=0.7, help='thresh for NMS')
     parser.add_argument('--iou_thresh', type=float, default=0.5, help='IOU thresh to filter tracks')
 
