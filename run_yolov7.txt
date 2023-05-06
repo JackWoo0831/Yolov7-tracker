@@ -17,6 +17,8 @@ python train_aux.py --dataset visdrone --workers 8 --device 4 --batch-size 16 --
 ## all category
 python train_aux.py --dataset visdrone --workers 8 --device 0 --batch-size 16 --data data/visdrone_all.yaml --img 1280 1280 --cfg cfg/training/yolov7-w6.yaml --weights './weights/yolov7-w6_training.pt' --name yolov7-w6-custom --hyp data/hyp.scratch.custom.yaml
 
+uavdt:
+python train_aux.py --dataset uavdt --workers 8 --device 5 --batch-size 16 --data data/uavdt.yaml --img 1280 1280 --cfg cfg/training/yolov7-w6.yaml --weights './weights/yolov7-w6_training.pt' --name yolov7-w6-custom --hyp data/hyp.scratch.custom.yaml
 
 ## all category, no mosaic, rect training
 NOTE: edited augment = False in line 246, train_aux.py

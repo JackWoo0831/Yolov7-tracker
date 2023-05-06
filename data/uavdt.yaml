@@ -1,0 +1,7 @@
+train: ./uavdt/train.txt
+val: ./uavdt/test.txt
+test: ./uavdt/test.txt
+
+nc: 1
+
+names: ['car']

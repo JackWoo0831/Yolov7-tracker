@@ -108,29 +108,17 @@ class StrongSORT(BaseTracker):
 
         """step 1. filter results and init tracks"""
         det_results = det_results[det_results[:, 4] > self.det_thresh]
-        # convert the scale to origin size
-        # NOTE: yolo v7 origin out format: [xc, yc, w, h, conf, cls0_conf, cls1_conf, ..., clsn_conf]
-        # TODO: check here, if nesscessary use two ratio
-        img_h, img_w = ori_img.shape[0], ori_img.shape[1]
-        ratio = [img_h / self.model_img_size[0], img_w / self.model_img_size[1]]  # usually > 1
-        det_results[:, 0], det_results[:, 2] =  det_results[:, 0]*ratio[1], det_results[:, 2]*ratio[1]
-        det_results[:, 1], det_results[:, 3] =  det_results[:, 1]*ratio[0], det_results[:, 3]*ratio[0]
+
 
         if det_results.shape[0] > 0:
 
-            bbox_temp = STrack.xywh2tlbr(det_results[:, :4])            
-            if self.NMS:
-                # NOTE: Note nms need tlbr format
-                nms_indices = nms(torch.from_numpy(bbox_temp), torch.from_numpy(det_results[:, 4]), 
-                                self.opts.nms_thresh)
-                det_results = det_results[nms_indices.numpy()]
-                features = self.get_feature(bbox_temp[nms_indices.numpy()], ori_img)
-            else:
-                features = self.get_feature(bbox_temp, ori_img)
+            bbox_temp = det_results[:, :4]        
+
+            features = self.get_feature(bbox_temp, ori_img)
 
             # detections: List[Strack]
-            detections = [STrack(cls, STrack.xywh2tlwh(xywh), score, kalman_format=self.opts.kalman_format, feature=feature)
-                            for (cls, xywh, score, feature) in zip(det_results[:, -1], det_results[:, :4], det_results[:, 4], features)]
+            detections = [STrack(cls, STrack.tlbr2tlwh(tlbr), score, kalman_format=self.opts.kalman_format, feature=feature)
+                            for (cls, tlbr, score, feature) in zip(det_results[:, -1], det_results[:, :4], det_results[:, 4], features)]
 
         else:
             detections = []

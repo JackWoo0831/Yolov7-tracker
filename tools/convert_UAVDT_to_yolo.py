@@ -47,7 +47,7 @@ def generate_imgs_and_labels(opts):
 
     # 分别处理train与test
     process_train_test(train_seq_list, frame_range, CATEGOTY_ID, 'train')
-    process_train_test(test_seq_list, frame_range, CATEGOTY_ID, 'test')
+    process_train_test(test_seq_list, {'start': 0.0, 'end': 1.0}, CATEGOTY_ID, 'test')
     print('All Done!!')
                 
 
@@ -156,4 +156,4 @@ if __name__ == '__main__':
     opts = parser.parse_args()
 
     generate_imgs_and_labels(opts)
-    # python uav_tools/convert_UAVDT_to_yolo.py --generate_imgs --half --random
+    # python tools/convert_UAVDT_to_yolo.py --generate_imgs --half --random

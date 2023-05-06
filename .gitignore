@@ -3,6 +3,13 @@ weights/*
 !weights/ckpt.t7
 !weights/DHN.pth 
 !weights/osnet_x0_25.pth
+visdrone/*
+uavdt/*
+mot17/*
+runs/*
+wandb/*
+track_result.txt
+.idea/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

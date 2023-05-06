@@ -27,6 +27,7 @@ try:  # import package that outside the tracker folder  For yolo v7
     
     from models.common import DetectMultiBackend
     from evaluate import evaluate
+    from utils.general import check_img_size, non_max_suppression, scale_boxes
     print('Note: running yolo v5 detector')
 
 except:
@@ -75,6 +76,9 @@ def main(opts, cfgs):
     """
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = DetectMultiBackend(opts.model_path, device=device, dnn=False, data=YAML_DICT, fp16=False)
+    stride = model.stride
+    opts.img_size = check_img_size(opts.img_size, s=stride)  # check img_size
+
     model.eval()
     # warm up
     model.warmup(imgsz=(1, 3, 640, 640))
@@ -115,7 +119,7 @@ def main(opts, cfgs):
 
         path = os.path.join(DATA_ROOT, seq) if opts.data_format == 'origin' else os.path.join('./', f'{opts.dataset}', 'test.txt')
 
-        loader = tracker_dataloader.TrackerLoader(path, opts.img_size, opts.data_format, seq)
+        loader = tracker_dataloader.TrackerLoader(path, opts.img_size, opts.data_format, seq, pre_process_method='v5', model_stride=stride)
 
         data_loader = torch.utils.data.DataLoader(loader, batch_size=1)
 
@@ -132,23 +136,11 @@ def main(opts, cfgs):
             if not i % opts.detect_per_frame:  # if it's time to detect
 
                 out = model(img.to(device))  # model forward             
-                out = out[0]  # NOTE: for yolo v7
+                out = out[0]  
             
-                if len(out.shape) == 3:  # case (bs, num_obj, ...)
-                    # out = out.squeeze()
-                    # NOTE: assert batch size == 1
-                    out = out.squeeze(0)
-                    img0 = img0.squeeze(0)
-                # remove some low conf detections
-                out = out[out[:, 4] > 0.001]
-                
-            
-                # NOTE: yolo v7 origin out format: [xc, yc, w, h, conf, cls0_conf, cls1_conf, ..., clsn_conf]
-                if opts.det_output_format == 'yolo':
-                    cls_conf, cls_idx = torch.max(out[:, 5:], dim=1)
-                    # out[:, 4] *= cls_conf  # fuse object and cls conf
-                    out[:, 5] = cls_idx
-                    out = out[:, :6]
+                img0 = img0.squeeze(0)                
+
+                out = post_process_v5(out, img_size=img.shape[2:], ori_img_size=img0.shape)
             
                 current_tracks = tracker.update(out, img0)  # List[class(STracks)]
             else:  # otherwize
@@ -221,6 +213,21 @@ def main(opts, cfgs):
     else:
         evaluate(sorted(os.listdir(f'./tracker/results/{folder_name}')), 
                     sorted([seq + '.txt' for seq in seqs]), data_type='visdrone', result_folder=folder_name)  
+
+
+
+def post_process_v5(out, img_size, ori_img_size):
+    """ post process for v5 and v7
+    
+    """
+
+    out = non_max_suppression(out, conf_thres=0.01, )[0]
+    out[:, :4] = scale_boxes(img_size, out[:, :4], ori_img_size, ratio_pad=None).round()
+
+    # out: tlbr, conf, cls
+
+    return out
+
 
 
 def save_results(folder_name, seq_name, results, data_type='default'):

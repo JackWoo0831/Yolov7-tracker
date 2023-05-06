@@ -57,14 +57,6 @@ class ByteTrack(BaseTracker):
         lost_stracks = []           # The tracks which are not obtained in the current frame but are not removed.(Lost for some time lesser than the threshold for removing)
         removed_stracks = []
 
-        # convert the scale to origin size
-        # NOTE: yolo v7 origin out format: [xc, yc, w, h, conf, cls0_conf, cls1_conf, ..., clsn_conf]
-        # TODO: check here, if nesscessary use two ratio
-        img_h, img_w = ori_img.shape[0], ori_img.shape[1]
-        ratio = [img_h / self.model_img_size[0], img_w / self.model_img_size[1]]  # usually > 1
-        det_results[:, 0], det_results[:, 2] =  det_results[:, 0]*ratio[1], det_results[:, 2]*ratio[1]
-        det_results[:, 1], det_results[:, 3] =  det_results[:, 1]*ratio[0], det_results[:, 3]*ratio[0]
-
         """step 1. filter results and init tracks"""
                
         # filter small area bboxs
@@ -72,12 +64,6 @@ class ByteTrack(BaseTracker):
             small_indicies = det_results[:, 2]*det_results[:, 3] > 50
             det_results = det_results[small_indicies]
 
-        # run NMS
-        if self.NMS:
-            # NOTE: Note nms need tlbr format
-            nms_indices = nms(torch.from_numpy(STrack.xywh2tlbr(det_results[:, :4])), torch.from_numpy(det_results[:, 4]), 
-                            self.opts.nms_thresh)
-            det_results = det_results[nms_indices.numpy()]
 
         # cal high and low indicies
         det_high_indicies = det_results[:, 4] >= self.det_thresh
@@ -88,19 +74,19 @@ class ByteTrack(BaseTracker):
         det_high, det_low = det_results[det_high_indicies], det_results[det_low_indicies]
         if det_high.shape[0] > 0:
             if self.use_apperance_model:
-                features = self.get_feature(STrack.xywh2tlbr(det_high[:, :4]), ori_img)
+                features = self.get_feature(det_high[:, :4], ori_img)
                 # detections: List[Strack]
-                D_high = [STrack(cls, STrack.xywh2tlwh(xywh), score, kalman_format=self.opts.kalman_format, feature=feature)
-                                for (cls, xywh, score, feature) in zip(det_high[:, -1], det_high[:, :4], det_high[:, 4], features)]
+                D_high = [STrack(cls, STrack.tlbr2tlwh(tlbr), score, kalman_format=self.opts.kalman_format, feature=feature)
+                                for (cls, tlbr, score, feature) in zip(det_high[:, -1], det_high[:, :4], det_high[:, 4], features)]
             else:
-                D_high = [STrack(cls, STrack.xywh2tlwh(xywh), score, kalman_format=self.opts.kalman_format)
-                            for (cls, xywh, score) in zip(det_high[:, -1], det_high[:, :4], det_high[:, 4])]
+                D_high = [STrack(cls, STrack.tlbr2tlwh(tlbr), score, kalman_format=self.opts.kalman_format)
+                            for (cls, tlbr, score) in zip(det_high[:, -1], det_high[:, :4], det_high[:, 4])]
         else:
             D_high = []
 
         if det_low.shape[0] > 0:
-            D_low = [STrack(cls, STrack.xywh2tlwh(xywh), score, kalman_format=self.opts.kalman_format)
-                            for (cls, xywh, score) in zip(det_low[:, -1], det_low[:, :4], det_low[:, 4])]
+            D_low = [STrack(cls, STrack.tlbr2tlwh(tlbr), score, kalman_format=self.opts.kalman_format)
+                            for (cls, tlbr, score) in zip(det_high[:, -1], det_high[:, :4], det_high[:, 4])]
         else:
             D_low = []
 

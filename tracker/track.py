@@ -29,6 +29,8 @@ try:  # import package that outside the tracker folder  For yolo v7
     from models.experimental import attempt_load
     from evaluate import evaluate
     from utils.torch_utils import select_device, time_synchronized, TracedModel
+    from utils.general import non_max_suppression, scale_coords, check_img_size
+
     print('Note: running yolo v7 detector')
 
 except:
@@ -73,17 +75,16 @@ def main(opts, cfgs):
         opts.save_images = True
 
     """
-    1. load model
+    1. load model for yolo v7
     """
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    ckpt = torch.load(opts.model_path, map_location=device)
-    model = ckpt['ema' if ckpt.get('ema') else 'model'].float().fuse().eval()  # for yolo v7
+
+    model = attempt_load(opts.model_path, map_location=device)  # for yolo v7
+    stride = int(model.stride.max())  # model stride
+    opts.img_size = check_img_size(opts.img_size, s=stride)  # check img_size
 
     if opts.trace:
-        print(opts.img_size)
         model = TracedModel(model, device, opts.img_size)
-    else:
-        model.to(device)
 
     """
     2. load dataset and track
@@ -124,7 +125,7 @@ def main(opts, cfgs):
 
         path = os.path.join(DATA_ROOT, seq) if opts.data_format == 'origin' else os.path.join('./', f'{opts.dataset}', 'test.txt')
 
-        loader = tracker_dataloader.TrackerLoader(path, opts.img_size, opts.data_format, seq)
+        loader = tracker_dataloader.TrackerLoader(path, opts.img_size, opts.data_format, seq, pre_process_method='v7', model_stride=stride)
 
         data_loader = torch.utils.data.DataLoader(loader, batch_size=1)
 
@@ -139,27 +140,16 @@ def main(opts, cfgs):
             timer.tic()  # start timing this img
 
             if not i % opts.detect_per_frame:  # if it's time to detect
-
+                
                 out = model(img.to(device))  # model forward             
                 out = out[0]  # NOTE: for yolo v7
-            
-                if len(out.shape) == 3:  # case (bs, num_obj, ...)
-                    # out = out.squeeze()
-                    # NOTE: assert batch size == 1
-                    out = out.squeeze(0)
-                    img0 = img0.squeeze(0)
-                # remove some low conf detections
-                out = out[out[:, 4] > 0.001]
-                
-            
-                # NOTE: yolo v7 origin out format: [xc, yc, w, h, conf, cls0_conf, cls1_conf, ..., clsn_conf]
-                if opts.det_output_format == 'yolo':
-                    cls_conf, cls_idx = torch.max(out[:, 5:], dim=1)
-                    # out[:, 4] *= cls_conf  # fuse object and cls conf
-                    out[:, 5] = cls_idx
-                    out = out[:, :6]
+                img0 = img0.squeeze(0)
+
+                # post process
+                out = post_process_v7(out, img_size=img.shape[2:], ori_img_size=img0.shape)
             
                 current_tracks = tracker.update(out, img0)  # List[class(STracks)]
+                
             else:  # otherwize
                 # make the img shape (bs, C, H, W) as (C, H, W)
                 if len(img0.shape) == 4:
@@ -238,6 +228,21 @@ def main(opts, cfgs):
     else:
         evaluate(sorted(os.listdir(f'./tracker/results/{folder_name}')), 
                     sorted([seq + '.txt' for seq in seqs]), data_type='visdrone', result_folder=folder_name)  
+
+
+
+def post_process_v7(out, img_size, ori_img_size):
+    """ post process for v5 and v7
+    
+    """
+
+    out = non_max_suppression(out, conf_thres=0.01, )[0]
+    out[:, :4] = scale_coords(img_size, out[:, :4], ori_img_size, ratio_pad=None).round()
+
+    # out: tlbr, conf, cls
+
+    return out
+
 
 def save_results(folder_name, seq_name, results, data_type='default'):
     """
@@ -346,7 +351,7 @@ if __name__ == '__main__':
     parser.add_argument('--model_path', type=str, default='./weights/best.pt', help='model path')
     parser.add_argument('--trace', type=bool, default=False, help='traced model of YOLO v7')
 
-    parser.add_argument('--img_size', nargs='+', type=int, default=[1280, 1280], help='[train, test] image sizes')
+    parser.add_argument('--img_size', nargs='+', type=int, default=1280, help='[train, test] image sizes')
 
     """For tracker"""
     # model path
@@ -377,4 +382,5 @@ if __name__ == '__main__':
     # NOTE: read path of datasets, sequences and TrackEval configs
     with open(f'./tracker/config_files/{opts.dataset}.yaml', 'r') as f:
         cfgs = yaml.load(f, Loader=yaml.FullLoader)
+    
     main(opts, cfgs)

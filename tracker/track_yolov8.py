@@ -115,7 +115,7 @@ def main(opts, cfgs):
 
         # NOTE: yolo v8 requires img to be original shape that openCV reads, that is
         # (H, W, C) inseatd of (C, H, W)
-        loader = tracker_dataloader.TrackerLoader(path, opts.img_size, opts.data_format, seq, convert_and_norm=False)
+        loader = tracker_dataloader.TrackerLoader(path, opts.img_size, opts.data_format, seq, pre_process_method='v8')
 
         data_loader = torch.utils.data.DataLoader(loader, batch_size=1)
 
@@ -141,13 +141,15 @@ def main(opts, cfgs):
                 out_ = model.predict(img)  # out: list['ultralytics.yolo.engine.results.Results']
                 out_ = out_[0].boxes  # out: ultralytics.yolo.engine.results.Results
 
+                out_ = postprocess_v8(out_)
+
                 # NOTE: convert out to (N, 6) which means [xc, yc, w, h, conf, cls]
-                out = torch.cat([out_.xywh, out_.conf[:, None], out_.cls[:, None]], dim=1)
+                out = torch.cat([out_.xyxy, out_.conf[:, None], out_.cls[:, None]], dim=1)
             
                 if len(img0.shape) == 4:
                     img0 = img0.squeeze(0)
                 # remove some low conf detections
-                out = out[out[:, 4] > 0.001]
+                out = out[out[:, 4] > 0.01]
                            
                 current_tracks = tracker.update(out, img0)  # List[class(STracks)]
             else:  # otherwize
@@ -228,6 +230,13 @@ def main(opts, cfgs):
     else:
         evaluate(sorted(os.listdir(f'./tracker/results/{folder_name}')), 
                     sorted([seq + '.txt' for seq in seqs]), data_type='visdrone', result_folder=folder_name)  
+
+
+
+def postprocess_v8(out):
+
+    return out
+
 
 def save_results(folder_name, seq_name, results, data_type='default'):
     """

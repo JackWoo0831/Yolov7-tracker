@@ -2,6 +2,8 @@
 
 ## 0. 更新记录
 
+**2023.5.6[大更新]**: 对于v5, v7, 改变前处理和后处理方式(采用原有方式), ***解决了部分边界框近大远小的bug, 边界框更加精确***. 此外, 对于v8, 弃用了resize步骤, 直接推理.
+
 **2023.3.14**解决了`DeepSORT`和`C_BIoUTracker`后面出现的目标不跟踪的bug.  
 
 **2023.2.28**优化了`track_demo.py`, 减少了内存占用.  
@@ -34,7 +36,7 @@ YOLO v8 代码的参数与之前完全相同. 安装YOLO v8以及训练步骤请
 
 **2022.10.15**增加了对yolo v5的支持, 只需替换track.py, 将tracker文件夹放到v5的根目录(我测试的是官方的[repo](https://github.com/ultralytics/yolov5))下即可. 代码在[yolo v5](https://github.com/JackWoo0831/Yolov7-tracker/blob/master/tracker/track_yolov5.py). 
 
-**2022.09.27**修复了STrack类中update不更新外观的问题, 代码有较大更改, **您可能需要重新下载```./tracker```文件夹**. 
+**2022.09.27[大更新]**修复了STrack类中update不更新外观的问题, 代码有较大更改, **您可能需要重新下载```./tracker```文件夹**. 
 尝试加入StrongSORT, 但是目前还不work:(, 尽力调一调
 
 ## 1. 亮点  
@@ -144,7 +146,7 @@ origin意味着您直接使用数据集原本的路径, **而不是通过yolo要
 DATA_ROOT的值应为/data/datasets/VisDrone2019/VisDrone2019-MOT-test-dev/sequences, 即DATA_ROOT目录下应该为各个视频序列的文件夹.
 ```
 
-***2. yolo***
+***2. yolo[推荐]***
 
 yolo格式意味着您通过yolo训练时所要求的txt文件读取序列. 我们知道yolo要求txt文件记录图片的路径, 例如:
 

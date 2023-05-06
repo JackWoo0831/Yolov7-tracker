@@ -77,31 +77,17 @@ def create_dataloader(path, imgsz, batch_size, stride, opt, hyp=None, augment=Fa
                                         pad=pad,
                                         image_weights=image_weights,
                                         prefix=prefix)
-        elif opt.dataset == 'visdrone':
-            dataset = LoadImagesAndLabelsVisDrone(path, imgsz, batch_size,
-                                        augment=augment,  # augment images
-                                        hyp=hyp,  # augmentation hyperparameters
-                                        rect=rect,  # rectangular training
-                                        cache_images=cache,
-                                        single_cls=opt.single_cls,
-                                        stride=int(stride),
-                                        pad=pad,
-                                        image_weights=image_weights,
-                                        prefix=prefix)
-
-        elif opt.dataset == 'mot17':
-            dataset = LoadImagesAndLabelsVisDrone(path, imgsz, batch_size,
-                                        augment=augment,  # augment images
-                                        hyp=hyp,  # augmentation hyperparameters
-                                        rect=rect,  # rectangular training
-                                        cache_images=cache,
-                                        single_cls=opt.single_cls,
-                                        stride=int(stride),
-                                        pad=pad,
-                                        image_weights=image_weights,
-                                        prefix=prefix)
         else:
-            raise NotImplementedError
+            dataset = LoadImagesAndLabelsCustom(path, imgsz, batch_size,
+                                        augment=augment,  # augment images
+                                        hyp=hyp,  # augmentation hyperparameters
+                                        rect=rect,  # rectangular training
+                                        cache_images=cache,
+                                        single_cls=opt.single_cls,
+                                        stride=int(stride),
+                                        pad=pad,
+                                        image_weights=image_weights,
+                                        prefix=prefix)
 
     batch_size = min(batch_size, len(dataset))
     nw = min([os.cpu_count() // world_size, batch_size if batch_size > 1 else 0, workers])  # number of workers
@@ -699,7 +685,7 @@ def img2label_paths_VisDrone(img_paths):
 
 
 
-class LoadImagesAndLabelsVisDrone(LoadImagesAndLabels):
+class LoadImagesAndLabelsCustom(LoadImagesAndLabels):
     def __init__(self, path, img_size=640, batch_size=16, augment=False, 
             hyp=None, rect=False, image_weights=False, cache_images=False, single_cls=False, stride=32, pad=0, prefix=''):
         # super().__init__(path, img_size, batch_size, augment, hyp, rect, image_weights, cache_images, single_cls, stride, pad, prefix)

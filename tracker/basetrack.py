@@ -108,6 +108,17 @@ class STrack(BaseTrack):
 
     # some tool funcs 
     @staticmethod
+    def tlbr2tlwh(tlbr):
+        """
+        convert tlbr to tlwh
+        """
+        result = np.asarray(tlbr).copy()
+        result[2] -= result[0]
+        result[3] -= result[1]
+
+        return result
+
+    @staticmethod
     def tlwh2xyah(tlwh):
         """
         convert tlwh to xyah
@@ -375,26 +386,12 @@ class BaseTracker(object):
         """step 1. filter results and init tracks"""
         det_results = det_results[det_results[:, 4] > self.det_thresh]
 
-        # convert the scale to origin size
-        # NOTE: yolo v7 origin out format: [xc, yc, w, h, conf, cls0_conf, cls1_conf, ..., clsn_conf]
-        # TODO: check here, if nesscessary use two ratio
-        img_h, img_w = ori_img.shape[0], ori_img.shape[1]
-        ratio = [img_h / self.model_img_size[0], img_w / self.model_img_size[1]]  # usually > 1
-        det_results[:, 0], det_results[:, 2] =  det_results[:, 0]*ratio[1], det_results[:, 2]*ratio[1]
-        det_results[:, 1], det_results[:, 3] =  det_results[:, 1]*ratio[0], det_results[:, 3]*ratio[0]
-
 
         if det_results.shape[0] > 0:
-            if self.NMS:
-                # TODO: Note nms need tlbr format
-                bbox_temp = STrack.xywh2tlbr(det_results[:, :4])
-                nms_indices = nms(torch.from_numpy(bbox_temp), torch.from_numpy(det_results[:, 4]), 
-                                self.opts.nms_thresh)
-                det_results = det_results[nms_indices.numpy()]
 
             # detections: List[Strack]
-            detections = [STrack(cls, STrack.xywh2tlwh(xywh), score, kalman_format=self.opts.kalman_format)
-                            for (cls, xywh, score) in zip(det_results[:, -1], det_results[:, :4], det_results[:, 4])]
+            detections = [STrack(cls, STrack.tlbr2tlwh(tlbr), score, kalman_format=self.opts.kalman_format)
+                            for (cls, tlbr, score) in zip(det_results[:, -1], det_results[:, :4], det_results[:, 4])]
 
         else:
             detections = []
