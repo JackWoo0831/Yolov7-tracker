@@ -336,7 +336,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--model_path', type=str, default=None, help='model path')
 
-    parser.add_argument('--img_size', nargs='+', type=int, default=[1280, 1280], help='[train, test] image sizes')
+    parser.add_argument('--img_size', nargs='+', type=int, default=1280, help='[train, test] image sizes')
 
     """For tracker"""
     # model path
