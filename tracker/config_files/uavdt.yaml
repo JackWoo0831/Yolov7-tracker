@@ -8,7 +8,7 @@ CATEGORY_DICT:
   0: 'car'
 
 CERTAIN_SEQS:
-  - 'M0101'
+  - 
 IGNORE_SEQS:  # Seqs you want to ignore
   - 
 

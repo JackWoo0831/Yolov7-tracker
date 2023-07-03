@@ -30,6 +30,7 @@ try:  # import package that outside the tracker folder  For yolo v7
     from models.experimental import attempt_load
     from evaluate import evaluate
     from utils.torch_utils import select_device, time_synchronized, TracedModel
+    from utils.general import non_max_suppression, scale_coords, check_img_size
     print('Note: running yolo v7 detector')
 
 except:
@@ -64,8 +65,11 @@ def main(opts):
     1. load model
     """
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
     ckpt = torch.load(opts.model_path, map_location=device)
     model = ckpt['ema' if ckpt.get('ema') else 'model'].float().fuse().eval()  # for yolo v7
+    stride = int(model.stride.max())  # model stride
+    opts.img_size = check_img_size(opts.img_size, s=stride)  # check img_size
 
     if opts.trace:
         print(opts.img_size)
@@ -116,13 +120,15 @@ def main(opts):
         if not is_valid: 
             break  # end of reading 
 
-        img = resize_a_frame(img0, [opts.img_size, opts.img_size])
+        img, img0 = preprocess_v7(ori_img=img0, model_size=(opts.img_size, opts.img_size), model_stride=stride)
 
         timer.tic()  # start timing this img
         img = img.unsqueeze(0)  # （C, H, W) -> (bs == 1, C, H, W)
         out = model(img.to(device))  # model forward             
         out = out[0]  # NOTE: for yolo v7
-    
+
+        out = post_process_v7(out, img_size=img.shape[2:], ori_img_size=img0.shape)
+
         if len(out.shape) == 3:  # case (bs, num_obj, ...)
             # out = out.squeeze()
             # NOTE: assert batch size == 1
@@ -157,7 +163,7 @@ def main(opts):
         results.append((frame_id + 1, cur_id, cur_tlwh, cur_cls))
         timer.toc()  # end timing this image
         
-        plot_img(img0, frame_id, [cur_tlwh, cur_id, cur_cls], save_dir=os.path.join(SAVE_FOLDER, 'reuslt_images', obj_name))
+        plot_img(img0, frame_id, [cur_tlwh, cur_id, cur_cls], save_dir=os.path.join(SAVE_FOLDER, 'result_images', obj_name))
     
         frame_id += 1
 
@@ -191,25 +197,63 @@ class my_queue:
         return self.start_idx == len(self.arr)
 
 
-def resize_a_frame(frame, target_size):
+def post_process_v7(out, img_size, ori_img_size):
+    """ post process for v5 and v7
+    
     """
-    resize a frame to target size
 
-    frame: np.ndarray, shape (H, W, C)
-    target_size: List[int, int] | Tuple[int, int]
+    out = non_max_suppression(out, conf_thres=0.01, )[0]
+    out[:, :4] = scale_coords(img_size, out[:, :4], ori_img_size, ratio_pad=None).round()
+
+    # out: tlbr, conf, cls
+
+    return out
+
+def preprocess_v7(ori_img, model_size, model_stride):
+    """ simple preprocess for a single image
+    
     """
-    # resize to input to the YOLO net
-    frame_resized = cv2.resize(frame, (target_size[0], target_size[1]))  # (H', W', C)
-    # convert BGR to RGB and to (C, H, W)
-    frame_resized = frame_resized[:, :, ::-1].transpose(2, 0, 1)
+    img_resized = _letterbox(ori_img, new_shape=model_size, stride=model_stride)[0]
 
-    frame_resized = np.ascontiguousarray(frame_resized, dtype=np.float32)
-    frame_resized /= 255.0
+    img_resized = img_resized[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB
+    img_resized = np.ascontiguousarray(img_resized)
 
-    frame_resized = torch.from_numpy(frame_resized)
+    img_resized = torch.from_numpy(img_resized).float()
+    img_resized /= 255.0
 
-    return frame_resized
+    return img_resized, ori_img
 
+def _letterbox(img, new_shape=(640, 640), color=(114, 114, 114), auto=True, scaleFill=False, scaleup=True, stride=32):
+    # Resize and pad image while meeting stride-multiple constraints
+    shape = img.shape[:2]  # current shape [height, width]
+    if isinstance(new_shape, int):
+        new_shape = (new_shape, new_shape)
+
+    # Scale ratio (new / old)
+    r = min(new_shape[0] / shape[0], new_shape[1] / shape[1])
+    if not scaleup:  # only scale down, do not scale up (for better test mAP)
+        r = min(r, 1.0)
+
+    # Compute padding
+    ratio = r, r  # width, height ratios
+    new_unpad = int(round(shape[1] * r)), int(round(shape[0] * r))
+    dw, dh = new_shape[1] - new_unpad[0], new_shape[0] - new_unpad[1]  # wh padding
+    if auto:  # minimum rectangle
+        dw, dh = np.mod(dw, stride), np.mod(dh, stride)  # wh padding
+    elif scaleFill:  # stretch
+        dw, dh = 0.0, 0.0
+        new_unpad = (new_shape[1], new_shape[0])
+        ratio = new_shape[1] / shape[1], new_shape[0] / shape[0]  # width, height ratios
+
+    dw /= 2  # divide padding into 2 sides
+    dh /= 2
+
+    if shape[::-1] != new_unpad:  # resize
+        img = cv2.resize(img, new_unpad, interpolation=cv2.INTER_LINEAR)
+    top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
+    left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
+    img = cv2.copyMakeBorder(img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)  # add border
+    return img, ratio, (dw, dh)
 
 def save_results(obj_name, results, data_type='default'):
     """
@@ -273,7 +317,8 @@ def save_videos(obj_name):
         obj_name = [obj_name]
 
     for seq in obj_name:
-        images_path = os.path.join(SAVE_FOLDER, 'reuslt_images', seq)
+        if 'mp4' in seq: seq = seq[:-4]
+        images_path = os.path.join(SAVE_FOLDER, 'result_images', seq)
         images_name = sorted(os.listdir(images_path))
 
         to_video_path = os.path.join(images_path, '../', seq + '.mp4')
@@ -303,12 +348,12 @@ def get_color(idx):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--obj', type=str, default='M1305.mp4', help='video NAME or images FOLDER NAME')
+    parser.add_argument('--obj', type=str, default='demo.mp4', help='video NAME or images FOLDER NAME')
 
     parser.add_argument('--save_txt', type=bool, default=False, help='whether save txt')
 
     parser.add_argument('--tracker', type=str, default='sort', help='sort, deepsort, etc')
-    parser.add_argument('--model_path', type=str, default='./weights/best.pt', help='model path')
+    parser.add_argument('--model_path', type=str, default='./weights/yolov7_UAVDT_35epochs_20230507.pt', help='model path')
     parser.add_argument('--trace', type=bool, default=False, help='traced model of YOLO v7')
 
     parser.add_argument('--img_size', type=int, default=1280, help='[train, test] image sizes')
@@ -319,7 +364,7 @@ if __name__ == '__main__':
     parser.add_argument('--dhn_path', type=str, default='./weights/DHN.pth', help='path of DHN path for DeepMOT')
 
     # threshs
-    parser.add_argument('--conf_thresh', type=float, default=0.5, help='filter tracks')
+    parser.add_argument('--conf_thresh', type=float, default=0.1, help='filter tracks')
     parser.add_argument('--nms_thresh', type=float, default=0.7, help='thresh for NMS')
     parser.add_argument('--iou_thresh', type=float, default=0.5, help='IOU thresh to filter tracks')
 

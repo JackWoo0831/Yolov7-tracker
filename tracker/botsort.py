@@ -270,7 +270,7 @@ def multi_gmc(stracks, H=np.eye(2, 3)):
 
 
 class BoTSORT(BaseTracker):
-    def __init__(self, opts, frame_rate=30, gamma=0.02, use_GMC=False, *args, **kwargs) -> None:
+    def __init__(self, opts, frame_rate=30, gamma=0.02, use_GMC=True, *args, **kwargs) -> None:
         super().__init__(opts, frame_rate, *args, **kwargs)
 
         self.use_apperance_model = False
