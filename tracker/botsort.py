@@ -318,7 +318,7 @@ class BoTSORT(BaseTracker):
         ori_img: original image, np.ndarray, shape(H, W, C)
         """
         if isinstance(det_results, torch.Tensor):
-            det_results = det_results.cpu().numpy()
+            det_results = det_results.detach().cpu().numpy()
         if isinstance(ori_img, torch.Tensor):
             ori_img = ori_img.numpy()
 

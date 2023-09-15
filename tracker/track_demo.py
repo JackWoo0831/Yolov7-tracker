@@ -90,7 +90,7 @@ def main(opts):
     # check path
     assert os.path.exists(obj_name), 'the path does not exist! '
     obj, get_next_frame = None, None  # init obj
-    if 'mp4' in opts.obj or 'MP4' in opts.obj:  # if it is a video
+    if 'mp4' in opts.obj or 'MP4' in opts.obj or 'mkv' in opts.obj:  # if it is a video
         obj = cv2.VideoCapture(obj_name) 
         get_next_frame = lambda _ : obj.read()
 
@@ -98,7 +98,7 @@ def main(opts):
         else: obj_name = obj_name[:-4]
     
     else:  
-        obj = my_queue(os.listdir(obj_name))
+        obj = my_queue(os.listdir(obj_name), obj_name)
         get_next_frame = lambda _ : obj.pop_front()
 
         if os.path.isabs(obj_name): obj_name = obj_name.split('/')[-1]
@@ -124,8 +124,9 @@ def main(opts):
 
         timer.tic()  # start timing this img
         img = img.unsqueeze(0)  # （C, H, W) -> (bs == 1, C, H, W)
-        out = model(img.to(device))  # model forward             
-        out = out[0]  # NOTE: for yolo v7
+        with torch.no_grad():
+            out = model(img.to(device))  # model forward             
+            out = out[0]  # NOTE: for yolo v7
 
         out = post_process_v7(out, img_size=img.shape[2:], ori_img_size=img0.shape)
 
@@ -181,15 +182,16 @@ class my_queue:
     """
     implement a queue for image seq reading
     """
-    def __init__(self, arr: list) -> None:
+    def __init__(self, arr: list, root_path: str) -> None:
         self.arr = arr 
         self.start_idx = 0
+        self.root_path = root_path
 
     def push_back(self, item):
         self.arr.append(item)
     
     def pop_front(self):
-        ret = cv2.imread(self.arr[self.start_idx])
+        ret = cv2.imread(os.path.join(self.root_path, self.arr[self.start_idx]))
         self.start_idx += 1
         return not self.is_empty(), ret
     
@@ -299,7 +301,7 @@ def plot_img(img, frame_id, results, save_dir):
         # draw a rect
         cv2.rectangle(img_, tlbr[:2], tlbr[2:], get_color(id), thickness=3, )
         # note the id and cls
-        text = f'{CATEGORY_DICT[cls]}-{id}'
+        text = f'id: {id}'
         cv2.putText(img_, text, (tlbr[0], tlbr[1]), fontFace=cv2.FONT_HERSHEY_PLAIN, fontScale=1, 
                         color=(255, 164, 0), thickness=2)
 
@@ -364,7 +366,7 @@ if __name__ == '__main__':
     parser.add_argument('--dhn_path', type=str, default='./weights/DHN.pth', help='path of DHN path for DeepMOT')
 
     # threshs
-    parser.add_argument('--conf_thresh', type=float, default=0.1, help='filter tracks')
+    parser.add_argument('--conf_thresh', type=float, default=0.05, help='filter tracks')
     parser.add_argument('--nms_thresh', type=float, default=0.7, help='thresh for NMS')
     parser.add_argument('--iou_thresh', type=float, default=0.5, help='IOU thresh to filter tracks')
 

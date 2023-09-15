@@ -11,6 +11,10 @@ wandb/*
 track_result.txt
 .idea/
 tracker/results/*
+*.mp4
+*.mkv
+temp.py
+demo_result/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
