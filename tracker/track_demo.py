@@ -139,11 +139,11 @@ def main(opts):
         
     
         # NOTE: yolo v7 origin out format: [xc, yc, w, h, conf, cls0_conf, cls1_conf, ..., clsn_conf]
-        cls_conf, cls_idx = torch.max(out[:, 5:], dim=1)
+        # cls_conf, cls_idx = torch.max(out[:, 5:], dim=1)
         # out[:, 4] *= cls_conf  # fuse object and cls conf
-        out[:, 5] = cls_idx
-        out = out[:, :6]
-    
+        # out[:, 5] = cls_idx
+        # out = out[:, :6]
+
         current_tracks = tracker.update(out, img0)  # List[class(STracks)]      
 
 
@@ -327,7 +327,7 @@ def save_videos(obj_name):
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
 
         img0 = Image.open(os.path.join(images_path, images_name[0]))
-        vw = cv2.VideoWriter(to_video_path, fourcc, 15, img0.size)
+        vw = cv2.VideoWriter(to_video_path, fourcc, 30, img0.size)
 
         for img in images_name:
             if img.endswith('.jpg'):

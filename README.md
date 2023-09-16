@@ -1,43 +1,12 @@
 # YOLO v7 + 各种tracker实现多目标跟踪
 
-## 0. 更新记录
+## 0. 近期更新
+
+**2023.9.16**: 对于`track_demo.py`, 由于`yolov7`的`non_maximum_supress`函数中已经对类别做了筛选, 因此删去了主程序中类别计算的部分, 并修复了一些小bug  
 
 **2023.5.6[大更新]**: 对于v5, v7, 改变前处理和后处理方式(采用原有方式), ***解决了部分边界框近大远小的bug, 边界框更加精确***. 此外, 对于v8, 弃用了resize步骤, 直接推理.
 
-**2023.3.14**解决了`DeepSORT`和`C_BIoUTracker`后面出现的目标不跟踪的bug.  
 
-**2023.2.28**优化了`track_demo.py`, 减少了内存占用.  
-
-**2023.2.24**加入了**推理单个视频或图片文件夹**以及**YOLO v8**的推理功能, 对应的代码为`tracker/track_demo.py`与`tracker/track_yolov8.py`.  推理单个视频或图片文件夹不需要指定数据集与真值, 也没有评测指标的功能, 只需要在命令行中指定`obj`即可, 例如:
-
-```shell
-python tracker/track_demo.py --obj demo.mp4 
-```
-YOLO v8 代码的参数与之前完全相同. 安装YOLO v8以及训练步骤请参照[YOLO v8](https://github.com/ultralytics/ultralytics)  
-
-
-**2023.2.11**修复了TrackEval路径报错的问题, 详见[issue35](https://github.com/JackWoo0831/Yolov7-tracker/issues/35)  
-
-**2023.2.10**修改了[DeepSORT](https://github.com/JackWoo0831/Yolov7-tracker/blob/master/tracker/deepsort.py)的代码与相关部分代码, 遵循了DeepSORT原论文**级联匹配和余弦距离计算**的原则, 并且解决了原有DeepSORT代码出现莫名漂移跟踪框的问题.  
-
-**2023.1.15**加入了**MOT17数据集**的训练与测试功能, 增加了MOT17转yolo格式的代码(`./tools/convert_MOT17_to_yolo.py`), 转换的过程中强制使得坐标合法, 且忽略了遮挡率>=0.75的目标. 您可以采用此代码转换并训练, 具体请见后面的说明. 在使用tracker的时候, 注意将`data_format`设置为yolo, 这样可以直接根据txt文件的路径读取图片.  
-
-**2023.1.14**加入了当前DanceTrack的SOTA[C_BIoUTracker](https://arxiv.org/pdf/2211.14317v2.pdf), 该论文提出了一种增广的IoU来避免目标的瞬间大范围移动, 且弃用了Kalman滤波. 该代码没有开源, 我是按照自己的理解进行了复现. **有错误非常欢迎指出**.  
-
-**2022.11.26**加入了[TrackEval](https://github.com/JonathonLuiten/TrackEval)评测的方式, 支持MOT, VisDrone和UAVDT三种数据集. 此外将一些路径变量选择了按照`yaml`的方式读取, 尽量让代码可读性高一些. 如果您不想用TrackEval进行评测, 则可以将`track.py`或`track_yolov5.py`的命令配置代码`parser.add_argument('--track_eval', type=bool, default=True, help='Use TrackEval to evaluate')`改为`False`.
-
-**2022.11.10**更新了如何设置数据集路径的说明, 请参见README的`track.py路径读取说明`部分.
-
-**2022.11.09**修复了BoT-SORT中的一处错误[issue 16](https://github.com/JackWoo0831/Yolov7-tracker/issues/16), 加粗了边界框与字体.  
-
-**2022.11.08**更新了track.py, track_yolov5.py, basetrack.py和tracker_dataloader.py, 修复了yolo格式读取数据以及保存视频功能的一些bug, 并增加了隔帧检测的功能(大多数时候用不到). 
-
-**2022.10.22**本代码的匹配代码比较简单, 不一定会达到最好的效果(每次匹配只用一次linear assignment, 没有和历史帧的特征相匹配), 您可以使用cascade matching的方式(参见[StrongSORT](https://github.com/dyhBUPT/StrongSORT/blob/master/deep_sort/tracker.py)的line94-134)  
-
-**2022.10.15**增加了对yolo v5的支持, 只需替换track.py, 将tracker文件夹放到v5的根目录(我测试的是官方的[repo](https://github.com/ultralytics/yolov5))下即可. 代码在[yolo v5](https://github.com/JackWoo0831/Yolov7-tracker/blob/master/tracker/track_yolov5.py). 
-
-**2022.09.27[大更新]**修复了STrack类中update不更新外观的问题, 代码有较大更改, **您可能需要重新下载```./tracker```文件夹**. 
-尝试加入StrongSORT, 但是目前还不work:(, 尽力调一调
 
 ## 1. 亮点  
 1. 统一代码风格, 对多种tracker重新整理, 详细注释, 方便阅读, 适合初学者 
@@ -249,3 +218,42 @@ python tracker/track_demo.py --obj demo.mp4
 > 注意: 推理的时候batch_size要求为1. 
 
 ## 更多运行命令参考 run_yolov7.txt文件
+
+
+## 10. 更新记录
+
+
+**2023.3.14**解决了`DeepSORT`和`C_BIoUTracker`后面出现的目标不跟踪的bug.  
+
+**2023.2.28**优化了`track_demo.py`, 减少了内存占用.  
+
+**2023.2.24**加入了**推理单个视频或图片文件夹**以及**YOLO v8**的推理功能, 对应的代码为`tracker/track_demo.py`与`tracker/track_yolov8.py`.  推理单个视频或图片文件夹不需要指定数据集与真值, 也没有评测指标的功能, 只需要在命令行中指定`obj`即可, 例如:
+
+```shell
+python tracker/track_demo.py --obj demo.mp4 
+```
+YOLO v8 代码的参数与之前完全相同. 安装YOLO v8以及训练步骤请参照[YOLO v8](https://github.com/ultralytics/ultralytics)  
+
+
+**2023.2.11**修复了TrackEval路径报错的问题, 详见[issue35](https://github.com/JackWoo0831/Yolov7-tracker/issues/35)  
+
+**2023.2.10**修改了[DeepSORT](https://github.com/JackWoo0831/Yolov7-tracker/blob/master/tracker/deepsort.py)的代码与相关部分代码, 遵循了DeepSORT原论文**级联匹配和余弦距离计算**的原则, 并且解决了原有DeepSORT代码出现莫名漂移跟踪框的问题.  
+
+**2023.1.15**加入了**MOT17数据集**的训练与测试功能, 增加了MOT17转yolo格式的代码(`./tools/convert_MOT17_to_yolo.py`), 转换的过程中强制使得坐标合法, 且忽略了遮挡率>=0.75的目标. 您可以采用此代码转换并训练, 具体请见后面的说明. 在使用tracker的时候, 注意将`data_format`设置为yolo, 这样可以直接根据txt文件的路径读取图片.  
+
+**2023.1.14**加入了当前DanceTrack的SOTA[C_BIoUTracker](https://arxiv.org/pdf/2211.14317v2.pdf), 该论文提出了一种增广的IoU来避免目标的瞬间大范围移动, 且弃用了Kalman滤波. 该代码没有开源, 我是按照自己的理解进行了复现. **有错误非常欢迎指出**.  
+
+**2022.11.26**加入了[TrackEval](https://github.com/JonathonLuiten/TrackEval)评测的方式, 支持MOT, VisDrone和UAVDT三种数据集. 此外将一些路径变量选择了按照`yaml`的方式读取, 尽量让代码可读性高一些. 如果您不想用TrackEval进行评测, 则可以将`track.py`或`track_yolov5.py`的命令配置代码`parser.add_argument('--track_eval', type=bool, default=True, help='Use TrackEval to evaluate')`改为`False`.
+
+**2022.11.10**更新了如何设置数据集路径的说明, 请参见README的`track.py路径读取说明`部分.
+
+**2022.11.09**修复了BoT-SORT中的一处错误[issue 16](https://github.com/JackWoo0831/Yolov7-tracker/issues/16), 加粗了边界框与字体.  
+
+**2022.11.08**更新了track.py, track_yolov5.py, basetrack.py和tracker_dataloader.py, 修复了yolo格式读取数据以及保存视频功能的一些bug, 并增加了隔帧检测的功能(大多数时候用不到). 
+
+**2022.10.22**本代码的匹配代码比较简单, 不一定会达到最好的效果(每次匹配只用一次linear assignment, 没有和历史帧的特征相匹配), 您可以使用cascade matching的方式(参见[StrongSORT](https://github.com/dyhBUPT/StrongSORT/blob/master/deep_sort/tracker.py)的line94-134)  
+
+**2022.10.15**增加了对yolo v5的支持, 只需替换track.py, 将tracker文件夹放到v5的根目录(我测试的是官方的[repo](https://github.com/ultralytics/yolov5))下即可. 代码在[yolo v5](https://github.com/JackWoo0831/Yolov7-tracker/blob/master/tracker/track_yolov5.py). 
+
+**2022.09.27[大更新]**修复了STrack类中update不更新外观的问题, 代码有较大更改, **您可能需要重新下载```./tracker```文件夹**. 
+尝试加入StrongSORT, 但是目前还不work:(, 尽力调一调
