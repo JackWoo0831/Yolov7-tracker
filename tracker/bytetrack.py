@@ -86,7 +86,7 @@ class ByteTrack(BaseTracker):
 
         if det_low.shape[0] > 0:
             D_low = [STrack(cls, STrack.tlbr2tlwh(tlbr), score, kalman_format=self.opts.kalman_format)
-                            for (cls, tlbr, score) in zip(det_high[:, -1], det_high[:, :4], det_high[:, 4])]
+                            for (cls, tlbr, score) in zip(det_low[:, -1], det_low[:, :4], det_low[:, 4])]
         else:
             D_low = []
 

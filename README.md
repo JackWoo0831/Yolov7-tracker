@@ -14,6 +14,8 @@
 
 ## 0. 近期更新
 
+**2023.10.24**: 对于botsort(`tracker/botsort.py line 358`)和bytetrack(`tracker/bytetrack.py line 89`), 在低置信度检测列表初始化, 改正原有错误 (原本写错了, 写的用`det_high`初始化). 
+
 **2023.9.16**: 对于`track_demo.py`, 由于`yolov7`的`non_maximum_supress`函数中已经对类别做了筛选, 因此删去了主程序中类别计算的部分, 并修复了一些小bug  
 
 **2023.5.6[大更新]**: 对于v5, v7, 改变前处理和后处理方式(采用原有方式), ***解决了部分边界框近大远小的bug, 边界框更加精确***. 此外, 对于v8, 弃用了resize步骤, 直接推理.
