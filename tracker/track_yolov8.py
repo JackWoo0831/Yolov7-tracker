@@ -176,7 +176,7 @@ def main(opts, cfgs):
             timer.toc()  # end timing this image
             
             if opts.save_images:
-                plot_img(img0, frame_id, [cur_tlwh, cur_id, cur_cls], save_dir=os.path.join(DATASET_ROOT, 'reuslt_images', seq))
+                plot_img(img0, frame_id, [cur_tlwh, cur_id, cur_cls], save_dir=os.path.join(DATASET_ROOT, 'result_images', seq))
         
             frame_id += 1
 
@@ -305,7 +305,7 @@ def save_videos(seq_names):
         seq_names = [seq_names]
 
     for seq in seq_names:
-        images_path = os.path.join(DATASET_ROOT, 'reuslt_images', seq)
+        images_path = os.path.join(DATASET_ROOT, 'result_images', seq)
         images_name = sorted(os.listdir(images_path))
 
         to_video_path = os.path.join(images_path, '../', seq + '.mp4')
