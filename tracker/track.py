@@ -1,386 +1,286 @@
 """
 main code for track
 """
+import sys, os
 import numpy as np
 import torch
 import cv2 
 from PIL import Image
-import tqdm
+from tqdm import tqdm
+import yaml 
 
+from loguru import logger 
 import argparse
-import os
-from time import gmtime, strftime
-from timer import Timer
-import yaml
 
-from basetrack import BaseTracker  # for framework
-from deepsort import DeepSORT
-from bytetrack import ByteTrack
-from deepmot import DeepMOT
-from botsort import BoTSORT
-from uavmot import UAVMOT
-from strongsort import StrongSORT
-from c_biou_tracker import C_BIoUTracker
+from tracking_utils.envs import select_device
+from tracking_utils.tools import *
+from tracking_utils.visualization import plot_img
 
-try:  # import package that outside the tracker folder  For yolo v7
-    import sys 
+from tracker_dataloader import TestDataset
+
+# trackers 
+from trackers.byte_tracker import ByteTracker
+from trackers.sort_tracker import SortTracker
+from trackers.botsort_tracker import BotTracker
+from trackers.c_biou_tracker import C_BIoUTracker
+from trackers.ocsort_tracker import OCSortTracker
+from trackers.deepsort_tracker import DeepSortTracker
+
+# YOLOX modules
+try:
+    from yolox.exp import get_exp 
+    from yolox_utils.postprocess import postprocess_yolox
+    from yolox.utils import fuse_model
+except Exception as e:
+    logger.warning(e)
+    logger.warning('Load yolox fail. If you want to use yolox, please check the installation.')
+    pass 
+
+# YOLOv7 modules
+try:
     sys.path.append(os.getcwd())
-    
     from models.experimental import attempt_load
-    from evaluate import evaluate
     from utils.torch_utils import select_device, time_synchronized, TracedModel
     from utils.general import non_max_suppression, scale_coords, check_img_size
+    from yolov7_utils.postprocess import postprocess as postprocess_yolov7
 
-    print('Note: running yolo v7 detector')
-
-except:
+except Exception as e:
+    logger.warning(e)
+    logger.warning('Load yolov7 fail. If you want to use yolov7, please check the installation.')
     pass
 
-import tracker_dataloader
-import trackeval
+# YOLOv8 modules
+try:
+    from ultralytics import YOLO
+    from yolov8_utils.postprocess import postprocess as postprocess_yolov8
 
-def set_basic_params(cfgs):
-    global CATEGORY_DICT, DATASET_ROOT, CERTAIN_SEQS, IGNORE_SEQS, YAML_DICT
-    CATEGORY_DICT = cfgs['CATEGORY_DICT']
-    DATASET_ROOT = cfgs['DATASET_ROOT']
-    CERTAIN_SEQS = cfgs['CERTAIN_SEQS']
-    IGNORE_SEQS = cfgs['IGNORE_SEQS']
-    YAML_DICT = cfgs['YAML_DICT']
+except Exception as e:
+    logger.warning(e)
+    logger.warning('Load yolov8 fail. If you want to use yolov8, please check the installation.')
+    pass
 
+TRACKER_DICT = {
+    'sort': SortTracker, 
+    'bytetrack': ByteTracker, 
+    'botsort': BotTracker, 
+    'c_bioutrack': C_BIoUTracker, 
+    'ocsort': OCSortTracker, 
+    'deepsort': DeepSortTracker
+}
 
-timer = Timer()
-seq_fps = []  # list to store time used for every seq
-def main(opts, cfgs):
-    set_basic_params(cfgs)  # NOTE: set basic path and seqs params first
-
-    TRACKER_DICT = {
-        'sort': BaseTracker,
-        'deepsort': DeepSORT,
-        'bytetrack': ByteTrack,
-        'deepmot': DeepMOT,
-        'botsort': BoTSORT,
-        'uavmot': UAVMOT, 
-        'strongsort': StrongSORT, 
-        'c_biou': C_BIoUTracker,
-    }  # dict for trackers, key: str, value: class(BaseTracker)
-
-    # NOTE: ATTENTION: make kalman and tracker compatible
-    if opts.tracker == 'botsort':
-        opts.kalman_format = 'botsort'
-    elif opts.tracker == 'strongsort':
-        opts.kalman_format = 'strongsort'
-
-    # NOTE: if save video, you must save image
-    if opts.save_videos:
-        opts.save_images = True
-
-    """
-    1. load model for yolo v7
-    """
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-    model = attempt_load(opts.model_path, map_location=device)  # for yolo v7
-    stride = int(model.stride.max())  # model stride
-    opts.img_size = check_img_size(opts.img_size, s=stride)  # check img_size
-
-    if opts.trace:
-        model = TracedModel(model, device, opts.img_size)
-
-    """
-    2. load dataset and track
-    """
-    # track per seq
-    # firstly, create seq list
-    seqs = []
-    if opts.data_format == 'yolo':
-        with open(f'./{opts.dataset}/test.txt', 'r') as f:
-            lines = f.readlines()
-            for line in lines:
-                elems = line.split('/')  # devide path by / in order to get sequence name(elems[-2])
-                if elems[-2] not in seqs:
-                    seqs.append(elems[-2])
-
-    elif opts.data_format == 'origin':
-        DATA_ROOT = os.path.join(DATASET_ROOT, 'VisDrone2019-MOT-test-dev/sequences')
-        seqs = os.listdir(DATA_ROOT)
-    else:
-        raise NotImplementedError
-    seqs = sorted(seqs)
-    seqs = [seq for seq in seqs if seq not in IGNORE_SEQS]
-
-    if not None in CERTAIN_SEQS: seqs = CERTAIN_SEQS  # if only track some certain seqs
-    print(f'Seqs will be evalueated, total{len(seqs)}:')
-    print(seqs)
-
-    # secondly, for each seq, instantiate dataloader class and track
-    # every time assign a different folder to store results
-    folder_name = strftime("%Y-%d-%m %H:%M:%S", gmtime())
-    folder_name = folder_name[5:-3].replace('-', '_')
-    folder_name = folder_name.replace(' ', '_')
-    folder_name = folder_name.replace(':', '_')
-    folder_name = opts.tracker + '_' + folder_name
-
-    for seq in seqs:
-        print(f'--------------tracking seq {seq}--------------')
-
-        path = os.path.join(DATA_ROOT, seq) if opts.data_format == 'origin' else os.path.join('./', f'{opts.dataset}', 'test.txt')
-
-        loader = tracker_dataloader.TrackerLoader(path, opts.img_size, opts.data_format, seq, pre_process_method='v7', model_stride=stride)
-
-        data_loader = torch.utils.data.DataLoader(loader, batch_size=1)
-
-        tracker = TRACKER_DICT[opts.tracker](opts, frame_rate=30, gamma=opts.gamma)  # instantiate tracker  TODO: finish init params
-
-        results = []  # store current seq results
-        frame_id = 0
-
-        pbar = tqdm.tqdm(desc=f"{seq}", ncols=80)
-        for i, (img, img0) in enumerate(data_loader):
-            pbar.update()
-            timer.tic()  # start timing this img
-
-            if not i % opts.detect_per_frame:  # if it's time to detect
-                
-                out = model(img.to(device))  # model forward             
-                out = out[0]  # NOTE: for yolo v7
-                img0 = img0.squeeze(0)
-
-                # post process
-                out = post_process_v7(out, img_size=img.shape[2:], ori_img_size=img0.shape)
-            
-                current_tracks = tracker.update(out, img0)  # List[class(STracks)]
-                
-            else:  # otherwize
-                # make the img shape (bs, C, H, W) as (C, H, W)
-                if len(img0.shape) == 4:
-                    img0 = img0.squeeze(0)
-                current_tracks = tracker.update_without_detection(None, img0)
-            
-            # save results
-            cur_tlwh, cur_id, cur_cls = [], [], []
-            for trk in current_tracks:
-                bbox = trk.tlwh
-                id = trk.track_id
-                cls = trk.cls
-
-                # filter low area bbox
-                if bbox[2] * bbox[3] > opts.min_area:
-                    cur_tlwh.append(bbox)
-                    cur_id.append(id)
-                    cur_cls.append(cls)
-                    # results.append((frame_id + 1, id, bbox, cls))
-
-            results.append((frame_id + 1, cur_id, cur_tlwh, cur_cls))
-            timer.toc()  # end timing this image
-            
-            if opts.save_images:
-                plot_img(img0, frame_id, [cur_tlwh, cur_id, cur_cls], save_dir=os.path.join(DATASET_ROOT, 'result_images', seq))
-        
-            frame_id += 1
-
-        seq_fps.append(i / timer.total_time)  # cal fps for current seq
-        timer.clear()  # clear for next seq
-        pbar.close()
-        # thirdly, save results
-        # every time assign a different name
-        save_results(folder_name, seq, results)
-
-        ## finally, save videos
-        if opts.save_images and opts.save_videos:
-            save_videos(seq_names=seq)
-
-    """
-    3. evaluate results
-    """
-    print(f'average fps: {np.mean(seq_fps)}')
-    if opts.track_eval:
-        default_eval_config = trackeval.Evaluator.get_default_eval_config()
-        default_dataset_config = trackeval.datasets.MotChallenge2DBox.get_default_dataset_config()
-        yaml_dataset_config = cfgs['TRACK_EVAL']  # read yaml file to read TrackEval configs
-        # make sure that seqs is same as 'SEQ_INFO' in yaml
-        # delete key in 'SEQ_INFO' which is not in seqs
-        seqs_in_cfgs = list(yaml_dataset_config['SEQ_INFO'].keys())
-        for k in seqs_in_cfgs:
-            if k not in seqs:
-                yaml_dataset_config['SEQ_INFO'].pop(k)
-        assert len(yaml_dataset_config['SEQ_INFO'].keys()) == len(seqs)
-        
-        for k in default_dataset_config.keys():
-            if k in yaml_dataset_config.keys():  # if the key need to be modified
-                default_dataset_config[k] = yaml_dataset_config[k]                
-
-        default_metrics_config = {'METRICS': ['HOTA', 'CLEAR', 'Identity'], 'THRESHOLD': 0.5}
-        config = {**default_eval_config, **default_dataset_config, **default_metrics_config}  # Merge default configs
-        eval_config = {k: v for k, v in config.items() if k in default_eval_config.keys()}
-        dataset_config = {k: v for k, v in config.items() if k in default_dataset_config.keys()}
-        metrics_config = {k: v for k, v in config.items() if k in default_metrics_config.keys()}
-
-        # Run code
-        evaluator = trackeval.Evaluator(eval_config)
-        dataset_list = [trackeval.datasets.MotChallenge2DBox(dataset_config)] if opts.dataset in ['mot', 'uavdt'] else [trackeval.datasets.VisDrone2DBox(dataset_config)]
-        metrics_list = []
-        for metric in [trackeval.metrics.HOTA, trackeval.metrics.CLEAR, trackeval.metrics.Identity, trackeval.metrics.VACE]:
-            if metric.get_name() in metrics_config['METRICS']:
-                metrics_list.append(metric(metrics_config))
-        if len(metrics_list) == 0:
-            raise Exception('No metrics selected for evaluation')
-        evaluator.evaluate(dataset_list, metrics_list)  
-    else:
-        evaluate(sorted(os.listdir(f'./tracker/results/{folder_name}')), 
-                    sorted([seq + '.txt' for seq in seqs]), data_type='visdrone', result_folder=folder_name)  
-
-
-
-def post_process_v7(out, img_size, ori_img_size):
-    """ post process for v5 and v7
+def get_args():
     
-    """
-
-    out = non_max_suppression(out, conf_thres=0.01, )[0]
-    out[:, :4] = scale_coords(img_size, out[:, :4], ori_img_size, ratio_pad=None).round()
-
-    # out: tlbr, conf, cls
-
-    return out
-
-
-def save_results(folder_name, seq_name, results, data_type='mot17'):
-    """
-    write results to txt file
-
-    results: list  row format: frame id, target id, box coordinate, class(optional)
-    to_file: file path(optional)
-    data_type: write data format, default or mot17 format.
-    """
-    assert len(results)
-
-    if not os.path.exists(f'./tracker/results/{folder_name}'):
-
-        os.makedirs(f'./tracker/results/{folder_name}')
-
-    with open(os.path.join('./tracker/results', folder_name, seq_name + '.txt'), 'w') as f:
-        for frame_id, target_ids, tlwhs, clses in results:
-            if data_type == 'default':
-                
-                for id, tlwh, cls in zip(target_ids, tlwhs, clses):
-                    f.write(f'{frame_id},{id},{tlwh[0]:.2f},{tlwh[1]:.2f},{tlwh[2]:.2f},{tlwh[3]:.2f},{int(cls)}\n')
-            
-            elif data_type == 'mot17':
-                for id, tlwh, cls in zip(target_ids, tlwhs, clses):
-                    f.write(f'{frame_id},{id},{tlwh[0]:.2f},{tlwh[1]:.2f},{tlwh[2]:.2f},{tlwh[3]:.2f},1.0,-1,-1,-1\n')
-    f.close()
-
-    return folder_name
-
-def plot_img(img, frame_id, results, save_dir):
-    """
-    img: np.ndarray: (H, W, C)
-    frame_id: int
-    results: [tlwhs, ids, clses]
-    save_dir: sr
-
-    plot images with bboxes of a seq
-    """
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-
-    img_ = np.ascontiguousarray(np.copy(img))
-
-    tlwhs, ids, clses = results[0], results[1], results[2]
-    for tlwh, id, cls in zip(tlwhs, ids, clses):
-
-        # convert tlwh to tlbr
-        tlbr = tuple([int(tlwh[0]), int(tlwh[1]), int(tlwh[0] + tlwh[2]), int(tlwh[1] + tlwh[3])])
-        # draw a rect
-        cv2.rectangle(img_, tlbr[:2], tlbr[2:], get_color(id), thickness=3, )
-        # note the id and cls
-        text = f'{CATEGORY_DICT[cls]}-{id}'
-        cv2.putText(img_, text, (tlbr[0], tlbr[1]), fontFace=cv2.FONT_HERSHEY_PLAIN, fontScale=1, 
-                        color=(255, 164, 0), thickness=2)
-
-    cv2.imwrite(filename=os.path.join(save_dir, f'{frame_id:05d}.jpg'), img=img_)
-
-
-def save_videos(seq_names):
-    """
-    convert imgs to a video
-
-    seq_names: List[str] or str, seqs that will be generated
-    """
-    if not isinstance(seq_names, list):
-        seq_names = [seq_names]
-
-    for seq in seq_names:
-        images_path = os.path.join(DATASET_ROOT, 'result_images', seq)
-        images_name = sorted(os.listdir(images_path))
-
-        to_video_path = os.path.join(images_path, '../', seq + '.mp4')
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-
-        img0 = Image.open(os.path.join(images_path, images_name[0]))
-        vw = cv2.VideoWriter(to_video_path, fourcc, 15, img0.size)
-
-        for img in images_name:
-            if img.endswith('.jpg'):
-                frame = cv2.imread(os.path.join(images_path, img))
-                vw.write(frame)
-    
-    print('Save videos Done!!')
-
-
-
-def get_color(idx):
-    """
-    aux func for plot_seq
-    get a unique color for each id
-    """
-    idx = idx * 3
-    color = ((37 * idx) % 255, (17 * idx) % 255, (29 * idx) % 255)
-
-    return color
-
-if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--dataset', type=str, default='visdrone', help='visdrone, or mot')
-    parser.add_argument('--data_format', type=str, default='origin', help='format of reading dataset')
-    parser.add_argument('--det_output_format', type=str, default='yolo', help='data format of output of detector, yolo or other')
-
+    """general"""
+    parser.add_argument('--dataset', type=str, default='visdrone_part', help='visdrone, mot17, etc.')
+    parser.add_argument('--detector', type=str, default='yolov8', help='yolov7, yolox, etc.')
     parser.add_argument('--tracker', type=str, default='sort', help='sort, deepsort, etc')
+    parser.add_argument('--reid_model', type=str, default='osnet_x0_25', help='osnet or deppsort')
 
-    parser.add_argument('--model_path', type=str, default='./weights/best.pt', help='model path')
-    parser.add_argument('--trace', type=bool, default=False, help='traced model of YOLO v7')
+    parser.add_argument('--kalman_format', type=str, default='default', help='use what kind of Kalman, sort, deepsort, byte, etc.')
+    parser.add_argument('--img_size', type=int, default=1280, help='image size, [h, w]')
 
-    parser.add_argument('--img_size', nargs='+', type=int, default=1280, help='[train, test] image sizes')
-
-    """For tracker"""
-    # model path
-    parser.add_argument('--reid_model_path', type=str, default='./weights/ckpt.t7', help='path for reid model path')
-    parser.add_argument('--dhn_path', type=str, default='./weights/DHN.pth', help='path of DHN path for DeepMOT')
-
-    # threshs
     parser.add_argument('--conf_thresh', type=float, default=0.2, help='filter tracks')
     parser.add_argument('--nms_thresh', type=float, default=0.7, help='thresh for NMS')
     parser.add_argument('--iou_thresh', type=float, default=0.5, help='IOU thresh to filter tracks')
 
-    # other options
+    parser.add_argument('--device', type=str, default='6', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
+
+    """yolox"""
+    parser.add_argument('--yolox_exp_file', type=str, default='./tracker/yolox_utils/yolox_m.py')
+
+    """model path"""
+    parser.add_argument('--detector_model_path', type=str, default='./weights/best.pt', help='model path')
+    parser.add_argument('--trace', type=bool, default=False, help='traced model of YOLO v7')
+    # other model path
+    parser.add_argument('--reid_model_path', type=str, default='./weights/osnet_x0_25.pth', help='path for reid model path')
+    parser.add_argument('--dhn_path', type=str, default='./weights/DHN.pth', help='path of DHN path for DeepMOT')
+
+   
+    """other options"""
+    parser.add_argument('--discard_reid', action='store_true', help='discard reid model, only work in bot-sort etc. which need a reid part')
     parser.add_argument('--track_buffer', type=int, default=30, help='tracking buffer')
     parser.add_argument('--gamma', type=float, default=0.1, help='param to control fusing motion and apperance dist')
-    parser.add_argument('--kalman_format', type=str, default='default', help='use what kind of Kalman, default, naive, strongsort or bot-sort like')
     parser.add_argument('--min_area', type=float, default=150, help='use to filter small bboxs')
 
+    parser.add_argument('--save_dir', type=str, default='track_results/{dataset_name}/{split}')
     parser.add_argument('--save_images', action='store_true', help='save tracking results (image)')
     parser.add_argument('--save_videos', action='store_true', help='save tracking results (video)')
-
-    # detect per several frames
-    parser.add_argument('--detect_per_frame', type=int, default=1, help='choose how many frames per detect')
     
     parser.add_argument('--track_eval', type=bool, default=True, help='Use TrackEval to evaluate')
 
-    opts = parser.parse_args()
+    return parser.parse_args()
 
-    # NOTE: read path of datasets, sequences and TrackEval configs
-    with open(f'./tracker/config_files/{opts.dataset}.yaml', 'r') as f:
-        cfgs = yaml.load(f, Loader=yaml.FullLoader)
+def main(args, dataset_cfgs):
     
-    main(opts, cfgs)
+    """1. set some params"""
+
+    # NOTE: if save video, you must save image
+    if args.save_videos:
+        args.save_images = True
+
+    """2. load detector"""
+    device = select_device(args.device)
+
+    if args.detector == 'yolox':
+
+        exp = get_exp(args.yolox_exp_file, None)  # TODO: modify num_classes etc. for specific dataset
+        model_img_size = exp.input_size
+        model = exp.get_model()
+        model.to(device)
+        model.eval()
+
+        logger.info(f"loading detector {args.detector} checkpoint {args.detector_model_path}")
+        ckpt = torch.load(args.detector_model_path, map_location=device)
+        model.load_state_dict(ckpt['model'])
+        logger.info("loaded checkpoint done")
+        model = fuse_model(model)
+
+        stride = None  # match with yolo v7
+
+        logger.info(f'Now detector is on device {next(model.parameters()).device}')
+
+    elif args.detector == 'yolov7':
+
+        logger.info(f"loading detector {args.detector} checkpoint {args.detector_model_path}")
+        model = attempt_load(args.detector_model_path, map_location=device)
+
+        # get inference img size
+        stride = int(model.stride.max())  # model stride
+        model_img_size = check_img_size(args.img_size, s=stride)  # check img_size
+
+        # Traced model
+        model = TracedModel(model, device=device, img_size=args.img_size)
+        # model.half()
+
+        logger.info("loaded checkpoint done")
+
+        logger.info(f'Now detector is on device {next(model.parameters()).device}')
+
+    elif args.detector == 'yolov8':
+
+        logger.info(f"loading detector {args.detector} checkpoint {args.detector_model_path}")
+        model = YOLO(args.detector_model_path)
+
+        model_img_size = [None, None]  
+        stride = None 
+
+        logger.info("loaded checkpoint done")
+
+    else:
+        logger.error(f"detector {args.detector} is not supprted")
+        exit(0)
+
+    """3. load sequences"""
+    DATA_ROOT = dataset_cfgs['DATASET_ROOT']
+    SPLIT = dataset_cfgs['SPLIT']
+
+    seqs = sorted(os.listdir(os.path.join(DATA_ROOT, 'images', SPLIT)))
+    seqs = [seq for seq in seqs if seq not in dataset_cfgs['IGNORE_SEQS']]
+    if not None in dataset_cfgs['CERTAIN_SEQS']:
+        seqs = dataset_cfgs['CERTAIN_SEQS']
+
+    logger.info(f'Total {len(seqs)} seqs will be tracked: {seqs}')
+
+    save_dir = args.save_dir.format(dataset_name=args.dataset, split=SPLIT)
+
+
+    """4. Tracking"""
+    for seq in seqs:
+        logger.info(f'--------------tracking seq {seq}--------------')
+
+        dataset = TestDataset(DATA_ROOT, SPLIT, seq_name=seq, img_size=model_img_size, model=args.detector, stride=stride)
+
+        data_loader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False)
+
+        tracker = TRACKER_DICT[args.tracker](args, )
+
+        process_bar = enumerate(data_loader)
+        process_bar = tqdm(process_bar, total=len(data_loader), ncols=150)
+
+        results = []
+
+        for frame_idx, (ori_img, img) in process_bar:
+            if args.detector == 'yolov8':
+                img = img.squeeze(0).cpu().numpy()
+
+            else:
+                img = img.to(device)  # (1, C, H, W)
+                img = img.float() 
+
+            ori_img = ori_img.squeeze(0)
+
+            # get detector output 
+            with torch.no_grad():
+                if args.detector == 'yolov8':
+                    output = model.predict(img, conf=args.conf_thresh, iou=args.nms_thresh)
+                else:
+                    output = model(img)
+
+            # postprocess output to original scales
+            if args.detector == 'yolox':
+                output = postprocess_yolox(output, len(dataset_cfgs['CATEGORY_NAMES']), conf_thresh=args.conf_thresh, 
+                                           img=img, ori_img=ori_img)
+
+            elif args.detector == 'yolov7':
+                output = postprocess_yolov7(output, args.conf_thresh, args.nms_thresh, img.shape[2:], ori_img.shape)
+
+            elif args.detector == 'yolov8':
+                output = postprocess_yolov8(output)
+            
+            else: raise NotImplementedError
+
+            # output: (tlbr, conf, cls)
+            # convert tlbr to tlwh
+            if isinstance(output, torch.Tensor): 
+                output = output.detach().cpu().numpy()
+            output[:, 2] -= output[:, 0]
+            output[:, 3] -= output[:, 1]
+            current_tracks = tracker.update(output, img, ori_img.cpu().numpy())
+        
+            # save results
+            cur_tlwh, cur_id, cur_cls, cur_score = [], [], [], []
+            for trk in current_tracks:
+                bbox = trk.tlwh
+                id = trk.track_id
+                cls = trk.category
+                score = trk.score
+
+                # filter low area bbox
+                if bbox[2] * bbox[3] > args.min_area:
+                    cur_tlwh.append(bbox)
+                    cur_id.append(id)
+                    cur_cls.append(cls)
+                    cur_score.append(score)
+                    # results.append((frame_id + 1, id, bbox, cls))
+
+            results.append((frame_idx + 1, cur_id, cur_tlwh, cur_cls, cur_score))
+
+            if args.save_images:
+                plot_img(img=ori_img, frame_id=frame_idx, results=[cur_tlwh, cur_id, cur_cls], 
+                         save_dir=os.path.join(save_dir, 'vis_results'))
+
+        save_results(folder_name=os.path.join(args.datasets, SPLIT), 
+                     seq_name=seq, 
+                     results=results)
+
+if __name__ == '__main__':
+
+    args = get_args()
+
+    with open(f'./tracker/config_files/{args.dataset}.yaml', 'r') as f:
+        cfgs = yaml.load(f, Loader=yaml.FullLoader)
+
+        
+    main(args, cfgs)
+
+    # python tracker/track_new.py --dataset uavdt --detector yolov8 --tracker bytetrack --kalman_format byte --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt --save_images
+    # python tracker/track_new.py --dataset uavdt --detector yolov8 --tracker sort --kalman_format sort --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt --save_images
+    # python tracker/track_new.py --dataset uavdt --detector yolov8 --tracker botsort --kalman_format bot --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt --save_images
+    # python tracker/track_new.py --dataset uavdt --detector yolov8 --tracker c_bioutrack --kalman_format bot --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt --save_images
+    # python tracker/track_new.py --dataset uavdt --detector yolov8 --tracker ocsort --kalman_format ocsort --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt --save_images
+    # python tracker/track_new.py --dataset uavdt --detector yolov8 --tracker deepsort --kalman_format byte --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt --save_images
+
+    # python tracker/track_new.py --dataset uavdt --detector yolov7 --tracker deepsort --kalman_format byte --detector_model_path weights/yolov7_UAVDT_35epochs_20230507.pt --save_images
+    # python tracker/track_new.py --dataset uavdt --detector yolox --tracker deepsort --kalman_format byte --detector_model_path weights/yolox_m_uavdt_50epochs.pth.tar --save_images

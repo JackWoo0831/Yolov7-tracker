@@ -1,102 +1,128 @@
+import numpy as np
 import torch 
-import os 
 import cv2 
-import numpy as np 
+import os 
+import os.path as osp
+
+from torch.utils.data import Dataset
 
 
-def letterbox(img, height=608, width=1088, color=(127.5, 127.5, 127.5)):  # resize a rectangular image to a padded rectangular 
-    shape = img.shape[:2]  # shape = [height, width]
-    ratio = min(float(height)/shape[0], float(width)/shape[1])
-    new_shape = (round(shape[1] * ratio), round(shape[0] * ratio)) # new_shape = [width, height]
-    dw = (width - new_shape[0]) / 2  # width padding
-    dh = (height - new_shape[1]) / 2  # height padding
-    top, bottom = round(dh - 0.1), round(dh + 0.1)
-    left, right = round(dw - 0.1), round(dw + 0.1)
-    img = cv2.resize(img, new_shape, interpolation=cv2.INTER_AREA)  # resized, no border
-    img = cv2.copyMakeBorder(img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)  # padded rectangular
-    return img, ratio, dw, dh
+class TestDataset(Dataset):
+    """ This class generate origin image, preprocessed image for inference
+        NOTE: for every sequence, initialize a TestDataset class
 
+    """
 
-class TrackerLoader(torch.utils.data.Dataset):
-    def __init__(self, path, img_size=1280, format='origin', seq=None, pre_process_method='v5',
-                 model_stride=32) -> None:
+    def __init__(self, data_root, split, seq_name, img_size=[640, 640], legacy_yolox=True, model='yolox', **kwargs) -> None:
         """
-        Load images for EACH SEQUENCE
-
-        path: file for img paths(format == 'yolo') or dataset path(format == 'origin')
-        img_size: image size for model, tuple or int
-        format: 'origin' or 'yolo'. origin for direct read imgs under seqs, yolo for read imgs by train.txt
-        pre_process_method: how to resize origin image
-        model_stride: stride of the model, only valid for v5 or v7
+        Args:
+            data_root: path for entire dataset
+            seq_name: name of sequence
+            img_size: List[int, int] | Tuple[int, int] image size for detection model 
+            legacy_yolox: bool, to be compatible with older versions of yolox
+            model: detection model, currently support x, v7, v8
         """
         super().__init__()
-        self.DATA_ROOT = '/data/wujiapeng/datasets/' if format == 'yolo' else path  # to get image
-        self.img_files = []
-        self.format = format
-        self.pre_process_method = pre_process_method
-        self.model_stride = model_stride
 
-        if format == 'origin':
-            assert os.path.isdir(path), f'your path is {path}, path must be your dataset path'
-           
-            self.img_files = sorted(os.listdir(path))  # add relative path
+        self.model = model
 
-        elif format == 'yolo':  
-            assert os.path.isfile(path), f'your path is {path}, path must be your path file'
-            with open(path, 'r') as f:
-                lines = f.readlines()
-            
-                for line in lines:
-                    line = line.strip()
-                    elems = line.split('/')
-                    if elems[-2] in seq:  # 
-                        self.img_files.append(os.path.join(self.DATA_ROOT, line))  # add abs path
+        self.data_root = data_root
+        self.seq_name = seq_name
+        self.img_size = img_size 
+        self.split = split 
 
-                    
-        assert self.img_files is not None
+        self.seq_path = osp.join(self.data_root, 'images', self.split, self.seq_name)
+        self.imgs_in_seq = sorted(os.listdir(self.seq_path))
         
-        if type(img_size) == int:
-            self.width, self.height = img_size, img_size
-        elif type(img_size) == list or type(img_size) == tuple:
-            self.width, self.height = img_size[0], img_size[1]
+        self.legacy = legacy_yolox
 
+        self.other_param = kwargs
 
-    def __getitem__(self, index):
-        """
-        return: img after resize and origin image, class(torch.Tensor)
-        """
-
-        current_img_path = self.img_files[index]  # current image path
-        if self.format == 'origin':
-            current_img_path = os.path.join(self.DATA_ROOT, current_img_path)
-              
-        ori_img = cv2.imread(current_img_path)  # (H, W, C)
-
-        assert ori_img is not None, f'Fail to load image{current_img_path}'
+    def __getitem__(self, idx):
         
-        if self.pre_process_method in ['v5', 'v7']:
+        if self.model == 'yolox':
+            return self._getitem_yolox(idx)
+        elif self.model == 'yolov7':
+            return self._getitem_yolov7(idx)
+        elif self.model == 'yolov8':
+            return self._getitem_yolov8(idx)
+    
+    def _getitem_yolox(self, idx):
 
-            img_resized = self._letterbox(ori_img, new_shape=(self.height, self.width), stride=self.model_stride)[0]
-
-            img_resized = img_resized[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB
-            img_resized = np.ascontiguousarray(img_resized)
-
-            img_resized = torch.from_numpy(img_resized).float()
+        img = cv2.imread(osp.join(self.seq_path, self.imgs_in_seq[idx])) 
+        img_resized, _ = self._preprocess_yolox(img, self.img_size, )
+        if self.legacy:
+            img_resized = img_resized[::-1, :, :].copy()  # BGR -> RGB
             img_resized /= 255.0
+            img_resized -= np.array([0.485, 0.456, 0.406]).reshape(3, 1, 1)
+            img_resized /= np.array([0.229, 0.224, 0.225]).reshape(3, 1, 1)
 
-        elif self.pre_process_method in ['v8']:
-            # NOTE: abort resize step
-            # img_resized = cv2.resize(ori_img, (self.height, self.width))
-            img_resized = torch.from_numpy(ori_img)
+        return torch.from_numpy(img), torch.from_numpy(img_resized)
 
+    def _getitem_yolov7(self, idx):
+
+        img = cv2.imread(osp.join(self.seq_path, self.imgs_in_seq[idx])) 
+
+        img_resized = self._preprocess_yolov7(img, )  # torch.Tensor
+
+        return torch.from_numpy(img), img_resized
+    
+    def _getitem_yolov8(self, idx):
+
+        img = cv2.imread(osp.join(self.seq_path, self.imgs_in_seq[idx]))  # (h, w, c)
+        # img = self._preprocess_yolov8(img)
+
+        return torch.from_numpy(img), torch.from_numpy(img)
+
+
+    def _preprocess_yolox(self, img, size, swap=(2, 0, 1)):
+        """ convert origin image to resized image, YOLOX-manner
+
+        Args:
+            img: np.ndarray
+            size: List[int, int] | Tuple[int, int]
+            swap: (H, W, C) -> (C, H, W)
+
+        Returns:
+            np.ndarray, float
+        
+        """
+        if len(img.shape) == 3:
+            padded_img = np.ones((size[0], size[1], 3), dtype=np.uint8) * 114
         else:
-            raise NotImplementedError
+            padded_img = np.ones(size, dtype=np.uint8) * 114
 
+        r = min(size[0] / img.shape[0], size[1] / img.shape[1])
+        resized_img = cv2.resize(
+            img,
+            (int(img.shape[1] * r), int(img.shape[0] * r)),
+            interpolation=cv2.INTER_LINEAR,
+        ).astype(np.uint8)
+        padded_img[: int(img.shape[0] * r), : int(img.shape[1] * r)] = resized_img
 
-        return img_resized, torch.from_numpy(ori_img)
+        padded_img = padded_img.transpose(swap)
+        padded_img = np.ascontiguousarray(padded_img, dtype=np.float32)
+        return padded_img, r
+
+    def _preprocess_yolov7(self, img, ):
+        
+        img_resized = self._letterbox(img, new_shape=self.img_size, stride=self.other_param['stride'], )[0]
+        img_resized = img_resized[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB
+        img_resized = np.ascontiguousarray(img_resized)
+
+        img_resized = torch.from_numpy(img_resized).float()
+        img_resized /= 255.0
+
+        return img_resized
     
+    def _preprocess_yolov8(self, img, ):
 
-    
+        img = img.transpose((2, 0, 1))
+        img = np.ascontiguousarray(img) 
+
+        return img
+
+
     def _letterbox(self, img, new_shape=(640, 640), color=(114, 114, 114), auto=True, scaleFill=False, scaleup=True, stride=32):
         # Resize and pad image while meeting stride-multiple constraints
         shape = img.shape[:2]  # current shape [height, width]
@@ -129,6 +155,69 @@ class TrackerLoader(torch.utils.data.Dataset):
         img = cv2.copyMakeBorder(img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)  # add border
         return img, ratio, (dw, dh)
 
-    def __len__(self):
-        return len(self.img_files)
+    def __len__(self, ):
+        return len(self.imgs_in_seq)
+    
 
+class DemoDataset(TestDataset):
+    """
+    dataset for demo
+    """
+    def __init__(self, file_name, img_size=[640, 640], model='yolox', legacy_yolox=True, **kwargs) -> None:
+
+        self.file_name = file_name
+        self.model = model 
+        self.img_size = img_size
+
+        self.is_video = '.mp4' in file_name or '.avi' in file_name 
+
+        if not self.is_video:
+            self.imgs_in_seq = sorted(os.listdir(file_name))
+        else:
+            self.imgs_in_seq = []
+            self.cap = cv2.VideoCapture(file_name)
+
+            while True:
+                ret, frame = self.cap.read()
+                if not ret: break
+
+                self.imgs_in_seq.append(frame)
+
+        self.legacy = legacy_yolox
+
+    def __getitem__(self, idx):
+
+        if not self.is_video:
+            img = cv2.imread(osp.join(self.file_name, self.imgs_in_seq[idx]))
+        else:
+            img = self.imgs_in_seq[idx]
+        
+        if self.model == 'yolox':
+            return self._getitem_yolox(img)
+        elif self.model == 'yolov7':
+            return self._getitem_yolov7(img)
+        elif self.model == 'yolov8':
+            return self._getitem_yolov8(img)
+
+    def _getitem_yolox(self, img):
+
+        img_resized, _ = self._preprocess_yolox(img, self.img_size, )
+        if self.legacy:
+            img_resized = img_resized[::-1, :, :].copy()  # BGR -> RGB
+            img_resized /= 255.0
+            img_resized -= np.array([0.485, 0.456, 0.406]).reshape(3, 1, 1)
+            img_resized /= np.array([0.229, 0.224, 0.225]).reshape(3, 1, 1)
+
+        return torch.from_numpy(img), torch.from_numpy(img_resized)
+
+    def _getitem_yolov7(self, img):
+
+        img_resized = self._preprocess_yolov7(img, )  # torch.Tensor
+
+        return torch.from_numpy(img), img_resized
+    
+    def _getitem_yolov8(self, img):
+
+        # img = self._preprocess_yolov8(img)
+
+        return torch.from_numpy(img), torch.from_numpy(img)

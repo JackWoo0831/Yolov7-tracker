@@ -1,6 +1,7 @@
 # Config file of UAVDT dataset
 
-DATASET_ROOT: '/data/wujiapeng/datasets/'  # your dataset root
+DATASET_ROOT: '/data/wujiapeng/datasets/UAVDT'  # your dataset root
+SPLIT: test
 CATEGORY_NAMES:  # category names to show
   - 'car'
 

@@ -4,27 +4,17 @@ DATASET_ROOT: '/data/wujiapeng/datasets/VisDrone2019/VisDrone2019'
 SPLIT: test
 CATEGORY_NAMES: 
   - 'pedestrain'
-  - 'people'
-  - 'bicycle'
   - 'car'
   - 'van'
   - 'truck'
-  - 'tricycle'
-  - 'awning-tricycle'
   - 'bus'
-  - 'motor'
 
 CATEGORY_DICT:
   0: 'pedestrain'
-  1: 'people'
-  2: 'bicycle'
-  3: 'car'
-  4: 'van'
-  5: 'truck'
-  6: 'tricycle'
-  7: 'awning-tricycle'
-  8: 'bus'
-  9: 'motor'
+  1: 'car'
+  2: 'van'
+  3: 'truck'
+  4: 'bus'
 
 CERTAIN_SEQS:
   - 

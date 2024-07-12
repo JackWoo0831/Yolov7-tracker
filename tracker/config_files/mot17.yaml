@@ -1,6 +1,7 @@
 # Config file of MOT17 dataset
 
-DATASET_ROOT: '/data/wujiapeng/datasets/'  # your dataset root
+DATASET_ROOT: '/data/wujiapeng/datasets/MOT17'  # your dataset root
+SPLIT: test
 CATEGORY_NAMES:  # category names to show
   - 'pedestrian'
 

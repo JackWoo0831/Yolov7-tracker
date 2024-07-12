@@ -1,0 +1,7 @@
+train: /data/wujiapeng/codes/DroneGraphTracker/visdrone_det/train.txt
+val: /data/wujiapeng/codes/DroneGraphTracker/visdrone_det/test.txt
+test: /data/wujiapeng/codes/DroneGraphTracker/visdrone_det/test.txt
+
+nc: 5
+
+names: ['pedestrain', 'car', 'van', 'truck', 'bus']

@@ -1,0 +1,7 @@
+train: /data/wujiapeng/codes/DroneGraphTracker/uavdt/train.txt
+val: /data/wujiapeng/codes/DroneGraphTracker/uavdt/test.txt
+test: /data/wujiapeng/codes/DroneGraphTracker/uavdt/test.txt
+
+nc: 1
+
+names: ['car']

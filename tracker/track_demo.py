@@ -1,384 +1,264 @@
 """
-Only track a video or image seqs, without evaluate
+main code for track
 """
-
+import sys, os
 import numpy as np
 import torch
 import cv2 
 from PIL import Image
-import tqdm
+from tqdm import tqdm
+import yaml 
 
+from loguru import logger 
 import argparse
-import os
-from time import gmtime, strftime
-from timer import Timer
-import yaml
 
-from basetrack import BaseTracker  # for framework
-from deepsort import DeepSORT
-from bytetrack import ByteTrack
-from deepmot import DeepMOT
-from botsort import BoTSORT
-from uavmot import UAVMOT
-from strongsort import StrongSORT
-from c_biou_tracker import C_BIoUTracker
+from tracking_utils.envs import select_device
+from tracking_utils.tools import *
+from tracking_utils.visualization import plot_img
 
-try:  # import package that outside the tracker folder  For yolo v7
-    import sys 
+from tracker_dataloader import TestDataset, DemoDataset
+
+# trackers 
+from trackers.byte_tracker import ByteTracker
+from trackers.sort_tracker import SortTracker
+from trackers.botsort_tracker import BotTracker
+from trackers.c_biou_tracker import C_BIoUTracker
+from trackers.ocsort_tracker import OCSortTracker
+from trackers.deepsort_tracker import DeepSortTracker
+
+# YOLOX modules
+try:
+    from yolox.exp import get_exp 
+    from yolox_utils.postprocess import postprocess_yolox
+    from yolox.utils import fuse_model
+except Exception as e:
+    logger.warning(e)
+    logger.warning('Load yolox fail. If you want to use yolox, please check the installation.')
+    pass 
+
+# YOLOv7 modules
+try:
     sys.path.append(os.getcwd())
-    
     from models.experimental import attempt_load
-    from evaluate import evaluate
     from utils.torch_utils import select_device, time_synchronized, TracedModel
     from utils.general import non_max_suppression, scale_coords, check_img_size
-    print('Note: running yolo v7 detector')
+    from yolov7_utils.postprocess import postprocess as postprocess_yolov7
 
-except:
+except Exception as e:
+    logger.warning(e)
+    logger.warning('Load yolov7 fail. If you want to use yolov7, please check the installation.')
     pass
 
-SAVE_FOLDER = 'demo_result'  # NOTE: set your save path here
-CATEGORY_DICT = {0: 'car'}  # NOTE: set the categories in your videos here, 
-# format: class_id(start from 0): class_name
+# YOLOv8 modules
+try:
+    from ultralytics import YOLO
+    from yolov8_utils.postprocess import postprocess as postprocess_yolov8
 
-timer = Timer()
-seq_fps = []  # list to store time used for every seq
+except Exception as e:
+    logger.warning(e)
+    logger.warning('Load yolov8 fail. If you want to use yolov8, please check the installation.')
+    pass
 
-def main(opts):
-    TRACKER_DICT = {
-        'sort': BaseTracker,
-        'deepsort': DeepSORT,
-        'bytetrack': ByteTrack,
-        'deepmot': DeepMOT,
-        'botsort': BoTSORT,
-        'uavmot': UAVMOT, 
-        'strongsort': StrongSORT, 
-        'c_biou': C_BIoUTracker,
-    }  # dict for trackers, key: str, value: class(BaseTracker)
+TRACKER_DICT = {
+    'sort': SortTracker, 
+    'bytetrack': ByteTracker, 
+    'botsort': BotTracker, 
+    'c_bioutrack': C_BIoUTracker, 
+    'ocsort': OCSortTracker, 
+    'deepsort': DeepSortTracker
+}
 
-    # NOTE: ATTENTION: make kalman and tracker compatible
-    if opts.tracker == 'botsort':
-        opts.kalman_format = 'botsort'
-    elif opts.tracker == 'strongsort':
-        opts.kalman_format = 'strongsort'
-
-    """
-    1. load model
-    """
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-    ckpt = torch.load(opts.model_path, map_location=device)
-    model = ckpt['ema' if ckpt.get('ema') else 'model'].float().fuse().eval()  # for yolo v7
-    stride = int(model.stride.max())  # model stride
-    opts.img_size = check_img_size(opts.img_size, s=stride)  # check img_size
-
-    if opts.trace:
-        print(opts.img_size)
-        model = TracedModel(model, device, opts.img_size)
-    else:
-        model.to(device)
-    model.eval()
-
-    """
-    2. load videos or images
-    """
-    obj_name = opts.obj
-    # if read video, then put every frame into a queue
-    # if read image seqs, the same as video
-    resized_images_queue = []  # List[torch.Tensor] store resized images
-    images_queue = []  # List[torch.Tensor] store origin images
-
-    # check path
-    assert os.path.exists(obj_name), 'the path does not exist! '
-    obj, get_next_frame = None, None  # init obj
-    if 'mp4' in opts.obj or 'MP4' in opts.obj or 'mkv' in opts.obj:  # if it is a video
-        obj = cv2.VideoCapture(obj_name) 
-        get_next_frame = lambda _ : obj.read()
-
-        if os.path.isabs(obj_name): obj_name = obj_name.split('/')[-1][:-4]
-        else: obj_name = obj_name[:-4]
+def get_args():
     
-    else:  
-        obj = my_queue(os.listdir(obj_name), obj_name)
-        get_next_frame = lambda _ : obj.pop_front()
-
-        if os.path.isabs(obj_name): obj_name = obj_name.split('/')[-1]
-
-
-    """
-    3. start tracking
-    """
-    tracker = TRACKER_DICT[opts.tracker](opts, frame_rate=30, gamma=opts.gamma)  # instantiate tracker  TODO: finish init params
-    results = []  # store current seq results
-    frame_id = 0
-
-    while True:
-        print(f'----------processing frame {frame_id}----------')
-
-        # end condition
-        is_valid, img0 = get_next_frame(None)  # img0: (H, W, C)
-
-        if not is_valid: 
-            break  # end of reading 
-
-        img, img0 = preprocess_v7(ori_img=img0, model_size=(opts.img_size, opts.img_size), model_stride=stride)
-
-        timer.tic()  # start timing this img
-        img = img.unsqueeze(0)  # （C, H, W) -> (bs == 1, C, H, W)
-        with torch.no_grad():
-            out = model(img.to(device))  # model forward             
-            out = out[0]  # NOTE: for yolo v7
-
-        out = post_process_v7(out, img_size=img.shape[2:], ori_img_size=img0.shape)
-
-        if len(out.shape) == 3:  # case (bs, num_obj, ...)
-            # out = out.squeeze()
-            # NOTE: assert batch size == 1
-            out = out.squeeze(0)
-        # remove some low conf detections
-        out = out[out[:, 4] > 0.001]
-        
-    
-        # NOTE: yolo v7 origin out format: [xc, yc, w, h, conf, cls0_conf, cls1_conf, ..., clsn_conf]
-        # cls_conf, cls_idx = torch.max(out[:, 5:], dim=1)
-        # out[:, 4] *= cls_conf  # fuse object and cls conf
-        # out[:, 5] = cls_idx
-        # out = out[:, :6]
-
-        current_tracks = tracker.update(out, img0)  # List[class(STracks)]      
-
-
-        # save results
-        cur_tlwh, cur_id, cur_cls = [], [], []
-        for trk in current_tracks:
-            bbox = trk.tlwh
-            id = trk.track_id
-            cls = trk.cls
-
-            # filter low area bbox
-            if bbox[2] * bbox[3] > opts.min_area:
-                cur_tlwh.append(bbox)
-                cur_id.append(id)
-                cur_cls.append(cls)
-                # results.append((frame_id + 1, id, bbox, cls))
-
-        results.append((frame_id + 1, cur_id, cur_tlwh, cur_cls))
-        timer.toc()  # end timing this image
-        
-        plot_img(img0, frame_id, [cur_tlwh, cur_id, cur_cls], save_dir=os.path.join(SAVE_FOLDER, 'result_images', obj_name))
-    
-        frame_id += 1
-
-    seq_fps.append(frame_id / timer.total_time)  # cal fps for current seq
-    timer.clear()  # clear for next seq
-    # thirdly, save results
-    # every time assign a different name
-    if opts.save_txt: save_results(obj_name, results)
-
-    ## finally, save videos
-    save_videos(obj_name)
-
-
-class my_queue:
-    """
-    implement a queue for image seq reading
-    """
-    def __init__(self, arr: list, root_path: str) -> None:
-        self.arr = arr 
-        self.start_idx = 0
-        self.root_path = root_path
-
-    def push_back(self, item):
-        self.arr.append(item)
-    
-    def pop_front(self):
-        ret = cv2.imread(os.path.join(self.root_path, self.arr[self.start_idx]))
-        self.start_idx += 1
-        return not self.is_empty(), ret
-    
-    def is_empty(self):
-        return self.start_idx == len(self.arr)
-
-
-def post_process_v7(out, img_size, ori_img_size):
-    """ post process for v5 and v7
-    
-    """
-
-    out = non_max_suppression(out, conf_thres=0.01, )[0]
-    out[:, :4] = scale_coords(img_size, out[:, :4], ori_img_size, ratio_pad=None).round()
-
-    # out: tlbr, conf, cls
-
-    return out
-
-def preprocess_v7(ori_img, model_size, model_stride):
-    """ simple preprocess for a single image
-    
-    """
-    img_resized = _letterbox(ori_img, new_shape=model_size, stride=model_stride)[0]
-
-    img_resized = img_resized[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB
-    img_resized = np.ascontiguousarray(img_resized)
-
-    img_resized = torch.from_numpy(img_resized).float()
-    img_resized /= 255.0
-
-    return img_resized, ori_img
-
-def _letterbox(img, new_shape=(640, 640), color=(114, 114, 114), auto=True, scaleFill=False, scaleup=True, stride=32):
-    # Resize and pad image while meeting stride-multiple constraints
-    shape = img.shape[:2]  # current shape [height, width]
-    if isinstance(new_shape, int):
-        new_shape = (new_shape, new_shape)
-
-    # Scale ratio (new / old)
-    r = min(new_shape[0] / shape[0], new_shape[1] / shape[1])
-    if not scaleup:  # only scale down, do not scale up (for better test mAP)
-        r = min(r, 1.0)
-
-    # Compute padding
-    ratio = r, r  # width, height ratios
-    new_unpad = int(round(shape[1] * r)), int(round(shape[0] * r))
-    dw, dh = new_shape[1] - new_unpad[0], new_shape[0] - new_unpad[1]  # wh padding
-    if auto:  # minimum rectangle
-        dw, dh = np.mod(dw, stride), np.mod(dh, stride)  # wh padding
-    elif scaleFill:  # stretch
-        dw, dh = 0.0, 0.0
-        new_unpad = (new_shape[1], new_shape[0])
-        ratio = new_shape[1] / shape[1], new_shape[0] / shape[0]  # width, height ratios
-
-    dw /= 2  # divide padding into 2 sides
-    dh /= 2
-
-    if shape[::-1] != new_unpad:  # resize
-        img = cv2.resize(img, new_unpad, interpolation=cv2.INTER_LINEAR)
-    top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
-    left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
-    img = cv2.copyMakeBorder(img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)  # add border
-    return img, ratio, (dw, dh)
-
-def save_results(obj_name, results, data_type='default'):
-    """
-    write results to txt file
-
-    results: list  row format: frame id, target id, box coordinate, class(optional)
-    to_file: file path(optional)
-    data_type: write data format
-    """
-    assert len(results)
-    if not data_type == 'default':
-        raise NotImplementedError  # TODO
-
-    with open(os.path.join(SAVE_FOLDER, obj_name + '.txt'), 'w') as f:
-        for frame_id, target_ids, tlwhs, clses in results:
-            if data_type == 'default':
-
-                # f.write(f'{frame_id},{target_id},{tlwh[0]},{tlwh[1]},\
-                #             {tlwh[2]},{tlwh[3]},{cls}\n')
-                for id, tlwh, cls in zip(target_ids, tlwhs, clses):
-                    f.write(f'{frame_id},{id},{tlwh[0]:.2f},{tlwh[1]:.2f},{tlwh[2]:.2f},{tlwh[3]:.2f},{int(cls)}\n')
-    f.close()
-
-def plot_img(img, frame_id, results, save_dir):
-    """
-    img: np.ndarray: (H, W, C)
-    frame_id: int
-    results: [tlwhs, ids, clses]
-    save_dir: sr
-
-    plot images with bboxes of a seq
-    """
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-
-    img_ = np.ascontiguousarray(np.copy(img))
-
-    tlwhs, ids, clses = results[0], results[1], results[2]
-    for tlwh, id, cls in zip(tlwhs, ids, clses):
-
-        # convert tlwh to tlbr
-        tlbr = tuple([int(tlwh[0]), int(tlwh[1]), int(tlwh[0] + tlwh[2]), int(tlwh[1] + tlwh[3])])
-        # draw a rect
-        cv2.rectangle(img_, tlbr[:2], tlbr[2:], get_color(id), thickness=3, )
-        # note the id and cls
-        text = f'id: {id}'
-        cv2.putText(img_, text, (tlbr[0], tlbr[1]), fontFace=cv2.FONT_HERSHEY_PLAIN, fontScale=1, 
-                        color=(255, 164, 0), thickness=2)
-
-    cv2.imwrite(filename=os.path.join(save_dir, f'{frame_id:05d}.jpg'), img=img_)
-
-
-def save_videos(obj_name):
-    """
-    convert imgs to a video
-
-    seq_names: List[str] or str, seqs that will be generated
-    """
-
-    if not isinstance(obj_name, list):
-        obj_name = [obj_name]
-
-    for seq in obj_name:
-        if 'mp4' in seq: seq = seq[:-4]
-        images_path = os.path.join(SAVE_FOLDER, 'result_images', seq)
-        images_name = sorted(os.listdir(images_path))
-
-        to_video_path = os.path.join(images_path, '../', seq + '.mp4')
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-
-        img0 = Image.open(os.path.join(images_path, images_name[0]))
-        vw = cv2.VideoWriter(to_video_path, fourcc, 30, img0.size)
-
-        for img in images_name:
-            if img.endswith('.jpg'):
-                frame = cv2.imread(os.path.join(images_path, img))
-                vw.write(frame)
-    
-    print('Save videos Done!!')
-
-
-def get_color(idx):
-    """
-    aux func for plot_seq
-    get a unique color for each id
-    """
-    idx = idx * 3
-    color = ((37 * idx) % 255, (17 * idx) % 255, (29 * idx) % 255)
-
-    return color
-
-if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--obj', type=str, default='demo.mp4', help='video NAME or images FOLDER NAME')
+    """general"""
+    parser.add_argument('--obj', type=str, required=True, default='demo.mp4', help='video or images folder PATH')
 
-    parser.add_argument('--save_txt', type=bool, default=False, help='whether save txt')
-
+    parser.add_argument('--detector', type=str, default='yolov8', help='yolov7, yolox, etc.')
     parser.add_argument('--tracker', type=str, default='sort', help='sort, deepsort, etc')
-    parser.add_argument('--model_path', type=str, default='./weights/yolov7_UAVDT_35epochs_20230507.pt', help='model path')
-    parser.add_argument('--trace', type=bool, default=False, help='traced model of YOLO v7')
+    parser.add_argument('--reid_model', type=str, default='osnet_x0_25', help='osnet or deppsort')
 
-    parser.add_argument('--img_size', type=int, default=1280, help='[train, test] image sizes')
+    parser.add_argument('--kalman_format', type=str, default='default', help='use what kind of Kalman, sort, deepsort, byte, etc.')
+    parser.add_argument('--img_size', type=int, default=1280, help='image size, [h, w]')
 
-    """For tracker"""
-    # model path
-    parser.add_argument('--reid_model_path', type=str, default='./weights/ckpt.t7', help='path for reid model path')
-    parser.add_argument('--dhn_path', type=str, default='./weights/DHN.pth', help='path of DHN path for DeepMOT')
-
-    # threshs
-    parser.add_argument('--conf_thresh', type=float, default=0.05, help='filter tracks')
+    parser.add_argument('--conf_thresh', type=float, default=0.2, help='filter tracks')
     parser.add_argument('--nms_thresh', type=float, default=0.7, help='thresh for NMS')
     parser.add_argument('--iou_thresh', type=float, default=0.5, help='IOU thresh to filter tracks')
 
-    # other options
+    parser.add_argument('--device', type=str, default='6', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
+
+    """yolox"""
+    parser.add_argument('--num_classes', type=int, default=1)
+    parser.add_argument('--yolox_exp_file', type=str, default='./tracker/yolox_utils/yolox_m.py')
+
+    """model path"""
+    parser.add_argument('--detector_model_path', type=str, default='./weights/best.pt', help='model path')
+    parser.add_argument('--trace', type=bool, default=False, help='traced model of YOLO v7')
+    # other model path
+    parser.add_argument('--reid_model_path', type=str, default='./weights/osnet_x0_25.pth', help='path for reid model path')
+    parser.add_argument('--dhn_path', type=str, default='./weights/DHN.pth', help='path of DHN path for DeepMOT')
+
+   
+    """other options"""
+    parser.add_argument('--discard_reid', action='store_true', help='discard reid model, only work in bot-sort etc. which need a reid part')
     parser.add_argument('--track_buffer', type=int, default=30, help='tracking buffer')
     parser.add_argument('--gamma', type=float, default=0.1, help='param to control fusing motion and apperance dist')
-    parser.add_argument('--kalman_format', type=str, default='default', help='use what kind of Kalman, default, naive, strongsort or bot-sort like')
     parser.add_argument('--min_area', type=float, default=150, help='use to filter small bboxs')
 
-    opts = parser.parse_args()
+    parser.add_argument('--save_dir', type=str, default='track_demo_results')
+    parser.add_argument('--save_images', action='store_true', help='save tracking results (image)')
+    parser.add_argument('--save_videos', action='store_true', help='save tracking results (video)')
+    
+    parser.add_argument('--track_eval', type=bool, default=True, help='Use TrackEval to evaluate')
 
-    if not os.path.exists(SAVE_FOLDER):  # demo save to a particular folder
-        os.makedirs(SAVE_FOLDER)
-        os.makedirs(os.path.join(SAVE_FOLDER, 'result_images'))
-    main(opts)
+    return parser.parse_args()
+
+def main(args):
+    
+    """1. set some params"""
+
+    # NOTE: if save video, you must save image
+    if args.save_videos:
+        args.save_images = True
+
+    """2. load detector"""
+    device = select_device(args.device)
+
+    if args.detector == 'yolox':
+
+        exp = get_exp(args.yolox_exp_file, None)  # TODO: modify num_classes etc. for specific dataset
+        model_img_size = exp.input_size
+        model = exp.get_model()
+        model.to(device)
+        model.eval()
+
+        logger.info(f"loading detector {args.detector} checkpoint {args.detector_model_path}")
+        ckpt = torch.load(args.detector_model_path, map_location=device)
+        model.load_state_dict(ckpt['model'])
+        logger.info("loaded checkpoint done")
+        model = fuse_model(model)
+
+        stride = None  # match with yolo v7
+
+        logger.info(f'Now detector is on device {next(model.parameters()).device}')
+
+    elif args.detector == 'yolov7':
+
+        logger.info(f"loading detector {args.detector} checkpoint {args.detector_model_path}")
+        model = attempt_load(args.detector_model_path, map_location=device)
+
+        # get inference img size
+        stride = int(model.stride.max())  # model stride
+        model_img_size = check_img_size(args.img_size, s=stride)  # check img_size
+
+        # Traced model
+        model = TracedModel(model, device=device, img_size=args.img_size)
+        # model.half()
+
+        logger.info("loaded checkpoint done")
+
+        logger.info(f'Now detector is on device {next(model.parameters()).device}')
+
+    elif args.detector == 'yolov8':
+
+        logger.info(f"loading detector {args.detector} checkpoint {args.detector_model_path}")
+        model = YOLO(args.detector_model_path)
+
+        model_img_size = [None, None]  
+        stride = None 
+
+        logger.info("loaded checkpoint done")
+
+    else:
+        logger.error(f"detector {args.detector} is not supprted")
+        exit(0)
+
+    """3. load sequences"""
+
+    dataset = DemoDataset(file_name=args.obj, img_size=model_img_size, model=args.detector, stride=stride, )
+    data_loader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False)
+
+    tracker = TRACKER_DICT[args.tracker](args, )
+
+
+    save_dir = args.save_dir
+
+    process_bar = enumerate(data_loader)
+    process_bar = tqdm(process_bar, total=len(data_loader), ncols=150)
+
+    results = []
+
+    """4. Tracking"""
+
+    for frame_idx, (ori_img, img) in process_bar:
+        if args.detector == 'yolov8':
+            img = img.squeeze(0).cpu().numpy()
+
+        else:
+            img = img.to(device)  # (1, C, H, W)
+            img = img.float() 
+
+        ori_img = ori_img.squeeze(0)
+
+        # get detector output 
+        with torch.no_grad():
+            if args.detector == 'yolov8':
+                output = model.predict(img, conf=args.conf_thresh, iou=args.nms_thresh)
+            else:
+                output = model(img)
+
+        # postprocess output to original scales
+        if args.detector == 'yolox':
+            output = postprocess_yolox(output, args.num_classes, conf_thresh=args.conf_thresh, 
+                                        img=img, ori_img=ori_img)
+
+        elif args.detector == 'yolov7':
+            output = postprocess_yolov7(output, args.conf_thresh, args.nms_thresh, img.shape[2:], ori_img.shape)
+
+        elif args.detector == 'yolov8':
+            output = postprocess_yolov8(output)
+        
+        else: raise NotImplementedError
+
+        # output: (tlbr, conf, cls)
+        # convert tlbr to tlwh
+        if isinstance(output, torch.Tensor): 
+            output = output.detach().cpu().numpy()
+        output[:, 2] -= output[:, 0]
+        output[:, 3] -= output[:, 1]
+        current_tracks = tracker.update(output, img, ori_img.cpu().numpy())
+    
+        # save results
+        cur_tlwh, cur_id, cur_cls, cur_score = [], [], [], []
+        for trk in current_tracks:
+            bbox = trk.tlwh
+            id = trk.track_id
+            cls = trk.category
+            score = trk.score
+
+            # filter low area bbox
+            if bbox[2] * bbox[3] > args.min_area:
+                cur_tlwh.append(bbox)
+                cur_id.append(id)
+                cur_cls.append(cls)
+                cur_score.append(score)
+                # results.append((frame_id + 1, id, bbox, cls))
+
+        results.append((frame_idx + 1, cur_id, cur_tlwh, cur_cls, cur_score))
+
+        if args.save_images:
+            plot_img(img=ori_img, frame_id=frame_idx, results=[cur_tlwh, cur_id, cur_cls], 
+                        save_dir=os.path.join(save_dir, 'vis_results'))
+
+    save_results(folder_name=os.path.join(save_dir, 'txt_results'), 
+                    seq_name='demo', 
+                    results=results)
+
+if __name__ == '__main__':
+
+    args = get_args()
+        
+    main(args)
+
+    # python tracker/track_demo_new.py --obj M0203.mp4 --detector yolov8 --tracker deepsort --kalman_format byte --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt --save_images

@@ -1,0 +1,7 @@
+train: /data/wujiapeng/codes/DroneGraphTracker/airmot/train.txt
+val: /data/wujiapeng/codes/DroneGraphTracker/airmot/test.txt
+test: /data/wujiapeng/codes/DroneGraphTracker/airmot/test.txt
+
+nc: 2
+
+names: ['plane', 'ship']
