@@ -3,7 +3,6 @@ Deep Sort
 """
 
 import numpy as np  
-from basetrack import BaseTrack, TrackState
 import torch 
 from torchvision.ops import nms
 

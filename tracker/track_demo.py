@@ -260,5 +260,3 @@ if __name__ == '__main__':
     args = get_args()
         
     main(args)
-
-    # python tracker/track_demo_new.py --obj M0203.mp4 --detector yolov8 --tracker deepsort --kalman_format byte --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt --save_images

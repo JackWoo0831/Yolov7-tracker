@@ -274,13 +274,3 @@ if __name__ == '__main__':
 
         
     main(args, cfgs)
-
-    # python tracker/track_new.py --dataset uavdt --detector yolov8 --tracker bytetrack --kalman_format byte --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt --save_images
-    # python tracker/track_new.py --dataset uavdt --detector yolov8 --tracker sort --kalman_format sort --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt --save_images
-    # python tracker/track_new.py --dataset uavdt --detector yolov8 --tracker botsort --kalman_format bot --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt --save_images
-    # python tracker/track_new.py --dataset uavdt --detector yolov8 --tracker c_bioutrack --kalman_format bot --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt --save_images
-    # python tracker/track_new.py --dataset uavdt --detector yolov8 --tracker ocsort --kalman_format ocsort --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt --save_images
-    # python tracker/track_new.py --dataset uavdt --detector yolov8 --tracker deepsort --kalman_format byte --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt --save_images
-
-    # python tracker/track_new.py --dataset uavdt --detector yolov7 --tracker deepsort --kalman_format byte --detector_model_path weights/yolov7_UAVDT_35epochs_20230507.pt --save_images
-    # python tracker/track_new.py --dataset uavdt --detector yolox --tracker deepsort --kalman_format byte --detector_model_path weights/yolox_m_uavdt_50epochs.pth.tar --save_images
