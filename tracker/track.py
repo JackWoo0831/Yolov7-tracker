@@ -14,7 +14,8 @@ import argparse
 
 from tracking_utils.envs import select_device
 from tracking_utils.tools import *
-from tracking_utils.visualization import plot_img
+from tracking_utils.visualization import plot_img, save_video
+from my_timer import Timer
 
 from tracker_dataloader import TestDataset
 
@@ -187,6 +188,11 @@ def main(args, dataset_cfgs):
 
 
     """4. Tracking"""
+
+    # set timer 
+    timer = Timer()
+    seq_fps = []
+
     for seq in seqs:
         logger.info(f'--------------tracking seq {seq}--------------')
 
@@ -202,6 +208,10 @@ def main(args, dataset_cfgs):
         results = []
 
         for frame_idx, (ori_img, img) in process_bar:
+
+            # start timing this frame
+            timer.tic()
+
             if args.detector == 'yolov8':
                 img = img.squeeze(0).cpu().numpy()
 
@@ -257,13 +267,28 @@ def main(args, dataset_cfgs):
 
             results.append((frame_idx + 1, cur_id, cur_tlwh, cur_cls, cur_score))
 
+            timer.toc()
+
             if args.save_images:
                 plot_img(img=ori_img, frame_id=frame_idx, results=[cur_tlwh, cur_id, cur_cls], 
                          save_dir=os.path.join(save_dir, 'vis_results'))
 
-        save_results(folder_name=os.path.join(args.datasets, SPLIT), 
+        save_results(folder_name=os.path.join(args.dataset, SPLIT), 
                      seq_name=seq, 
                      results=results)
+        
+        # show the fps
+        seq_fps.append(frame_idx / timer.total_time)
+        logger.info(f'fps of seq {seq}: {seq_fps[-1]}')
+        timer.clear()
+        
+        if args.save_videos:
+            save_video(images_path=os.path.join(save_dir, 'vis_results'))
+            logger.info(f'save video of {seq} done')
+
+    # show the average fps
+    logger.info(f'average fps: {np.mean(seq_fps)}')
+
 
 if __name__ == '__main__':
 

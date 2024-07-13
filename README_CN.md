@@ -8,6 +8,7 @@
 
 ```bash 
 git clone https://github.com/JackWoo0831/Yolov7-tracker.git
+git checkout v2  # change to v2 branch !!
 ```
 
 🙌 ***如果您有任何关于添加跟踪器的建议***，请在Issues部分留言并附上论文标题或链接！欢迎大家一起来让这个repo变得更好
@@ -47,8 +48,8 @@ REID模型支持：
 ## 🗺️ 路线图
 
 - [ ] Add StrongSort
-- [ ] Add save video function
-- [ ] Add timer function to calculate fps
+- [ x ] Add save video function
+- [ x ] Add timer function to calculate fps
 
 ##  🔨 安装
 

@@ -1,6 +1,7 @@
 import cv2 
 import os 
 import numpy as np 
+from PIL import Image
 
 def plot_img(img, frame_id, results, save_dir):
     """
@@ -44,3 +45,20 @@ def get_color(idx):
     color = ((37 * idx) % 255, (17 * idx) % 255, (29 * idx) % 255)
 
     return color
+
+def save_video(images_path):
+    """
+    save images (frames) to a video
+    """
+
+    images_list = sorted(os.listdir(images_path))
+    save_video_path = os.path.join(images_path, images_path.split('/')[-1] + '.mp4')
+
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+
+    img0 = Image.open(os.path.join(images_path, images_list[0]))
+    vw = cv2.VideoWriter(save_video_path, fourcc, 15, img0.size)
+
+    for image_name in images_list:
+        image = cv2.imread(filename=os.path.join(images_path, image_name))
+        vw.write(image)

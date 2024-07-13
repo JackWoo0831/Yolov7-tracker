@@ -10,7 +10,7 @@ runs/*
 wandb/*
 track_result.txt
 .idea/
-tracker/results/*
+track_results/*
 *.mp4
 *.mkv
 temp.py

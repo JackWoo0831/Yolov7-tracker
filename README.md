@@ -8,11 +8,16 @@ Compared to the previous version, this is an ***entirely new version (branch v2)
 
 ```bash 
 git clone https://github.com/JackWoo0831/Yolov7-tracker.git
+git checkout v2  # change to v2 branch !!
 ```
 
 🙌 ***If you have any suggestions for adding trackers***, please leave a comment in the Issues section with the paper title or link! Everyone is welcome to contribute to making this repo better.
 
+<div align="center">
 
+**Language**: English | [简体中文](README_CN.md)
+
+</div>
 
 ## ❤️ Introduction
 
@@ -47,8 +52,8 @@ The highlights are:
 ## 🗺️ Roadmap
 
 - [ ] Add StrongSort
-- [ ] Add save video function
-- [ ] Add timer function to calculate fps
+- [ x ] Add save video function
+- [ x ] Add timer function to calculate fps
 
 ##  🔨 Installation
 

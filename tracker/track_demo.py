@@ -14,7 +14,7 @@ import argparse
 
 from tracking_utils.envs import select_device
 from tracking_utils.tools import *
-from tracking_utils.visualization import plot_img
+from tracking_utils.visualization import plot_img, save_video
 
 from tracker_dataloader import TestDataset, DemoDataset
 
@@ -254,6 +254,10 @@ def main(args):
     save_results(folder_name=os.path.join(save_dir, 'txt_results'), 
                     seq_name='demo', 
                     results=results)
+    
+    if args.save_videos:
+        save_video(images_path=os.path.join(save_dir, 'vis_results'))
+        logger.info(f'save video done')
 
 if __name__ == '__main__':
 
