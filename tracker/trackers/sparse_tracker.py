@@ -10,7 +10,7 @@ import cv2
 import torchvision.transforms as T
 
 from .basetrack import BaseTrack, TrackState
-from .tracklet import Tracklet, Tracklet_w_reid
+from .tracklet import Tracklet, Tracklet_w_depth
 from .matching import *
 
 from .reid_models.OSNet import *
@@ -44,7 +44,7 @@ def load_reid_model(reid_model, reid_model_path):
     
     return model
 
-class BotTracker(object):
+class SparseTracker(object):
     def __init__(self, args, frame_rate=30):
         self.tracked_tracklets = []  # type: list[Tracklet]
         self.lost_tracklets = []  # type: list[Tracklet]
@@ -57,61 +57,109 @@ class BotTracker(object):
         self.buffer_size = int(frame_rate / 30.0 * args.track_buffer)
         self.max_time_lost = self.buffer_size
 
-        self.motion = args.kalman_format
-
-        self.with_reid = not args.discard_reid
-
-        self.reid_model, self.crop_transforms = None, None 
-        if self.with_reid:
-            self.reid_model = load_reid_model(args.reid_model, args.reid_model_path)
-            self.crop_transforms = T.Compose([
-            # T.ToPILImage(),
-            # T.Resize(size=(256, 128)),
-            T.ToTensor(),  # (c, 128, 256)
-            T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ])
-            
+        self.motion = args.kalman_format            
 
         # camera motion compensation module
         self.gmc = GMC(method='orb', downscale=2, verbose=None)
 
-    def reid_preprocess(self, obj_bbox):
-        """
-        preprocess cropped object bboxes 
+    def get_deep_range(self, obj, step):
+        col = []
+        for t in obj:
+            lend = (t.deep_vec)[2]
+            col.append(lend)
+        max_len, mix_len = max(col), min(col)
+        if max_len != mix_len:
+            deep_range =np.arange(mix_len, max_len, (max_len - mix_len + 1) / step)
+            if deep_range[-1] < max_len:
+                deep_range = np.concatenate([deep_range, np.array([max_len],)])
+                deep_range[0] = np.floor(deep_range[0])
+                deep_range[-1] = np.ceil(deep_range[-1])
+        else:    
+            deep_range = [mix_len,] 
+        mask = self.get_sub_mask(deep_range, col)      
+        return mask
+    
+    def get_sub_mask(self, deep_range, col):
+        mix_len=deep_range[0]
+        max_len=deep_range[-1]
+        if max_len == mix_len:
+            lc = mix_len   
+        mask = []
+        for d in deep_range:
+            if d > deep_range[0] and d < deep_range[-1]:
+                mask.append((col >= lc) & (col < d)) 
+                lc = d
+            elif d == deep_range[-1]:
+                mask.append((col >= lc) & (col <= d)) 
+                lc = d 
+            else:
+                lc = d
+                continue
+        return mask
+    
+    # core function
+    def DCM(self, detections, tracks, activated_tracklets, refind_tracklets, levels, thresh, is_fuse):
+        if len(detections) > 0:
+            det_mask = self.get_deep_range(detections, levels) 
+        else:
+            det_mask = []
+
+        if len(tracks)!=0:
+            track_mask = self.get_deep_range(tracks, levels)
+        else:
+            track_mask = []
+
+        u_detection, u_tracks, res_det, res_track = [], [], [], []
+        if len(track_mask) != 0:
+            if  len(track_mask) < len(det_mask):
+                for i in range(len(det_mask) - len(track_mask)):
+                    idx = np.argwhere(det_mask[len(track_mask) + i] == True)
+                    for idd in idx:
+                        res_det.append(detections[idd[0]])
+            elif len(track_mask) > len(det_mask):
+                for i in range(len(track_mask) - len(det_mask)):
+                    idx = np.argwhere(track_mask[len(det_mask) + i] == True)
+                    for idd in idx:
+                        res_track.append(tracks[idd[0]])
         
-        obj_bbox: np.ndarray, shape=(h_obj, w_obj, c)
+            for dm, tm in zip(det_mask, track_mask):
+                det_idx = np.argwhere(dm == True)
+                trk_idx = np.argwhere(tm == True)
+                
+                # search det 
+                det_ = []
+                for idd in det_idx:
+                    det_.append(detections[idd[0]])
+                det_ = det_ + u_detection
+                # search trk
+                track_ = []
+                for idt in trk_idx:
+                    track_.append(tracks[idt[0]])
+                # update trk
+                track_ = track_ + u_tracks
+                
+                dists = iou_distance(track_, det_)
 
-        return: 
-        torch.Tensor of shape (c, 128, 256)
-        """
-        obj_bbox = cv2.resize(obj_bbox.astype(np.float32) / 255.0, dsize=(128, 128))  # shape: (128, 256, c)
+                matches, u_track_, u_det_ = linear_assignment(dists, thresh)
+                for itracked, idet in matches:
+                    track = track_[itracked]
+                    det = det_[idet]
+                    if track.state == TrackState.Tracked:
+                        track.update(det_[idet], self.frame_id)
+                        activated_tracklets.append(track)
+                    else:
+                        track.re_activate(det, self.frame_id, new_id=False)
+                        refind_tracklets.append(track)
+                u_tracks = [track_[t] for t in u_track_]
+                u_detection = [det_[t] for t in u_det_]
+                
+            u_tracks = u_tracks + res_track
+            u_detection = u_detection + res_det
 
-        return self.crop_transforms(obj_bbox)
-
-    def get_feature(self, tlwhs, ori_img):
-        """
-        get apperance feature of an object
-        tlwhs: shape (num_of_objects, 4)
-        ori_img: original image, np.ndarray, shape(H, W, C)
-        """
-        obj_bbox = []
-
-        for tlwh in tlwhs:
-            tlwh = list(map(int, tlwh))
-            # if any(tlbr_ == -1 for tlbr_ in tlwh):
-            #     print(tlwh)
+        else:
+            u_detection = detections
             
-            tlbr_tensor = self.reid_preprocess(ori_img[tlwh[1]: tlwh[1] + tlwh[3], tlwh[0]: tlwh[0] + tlwh[2]])
-            obj_bbox.append(tlbr_tensor)
-        
-        if not obj_bbox:
-            return np.array([])
-        
-        obj_bbox = torch.stack(obj_bbox, dim=0)
-        obj_bbox = obj_bbox.cuda()  
-        
-        features = self.reid_model(obj_bbox)  # shape: (num_of_objects, feature_dim)
-        return features.cpu().detach().numpy()
+        return activated_tracklets, refind_tracklets, u_tracks, u_detection
 
 
     def update(self, output_results, img, ori_img):
@@ -143,21 +191,13 @@ class BotTracker(object):
         scores_keep = scores[remain_inds]
         scores_second = scores[inds_second]
 
-        """Step 1: Extract reid features"""
-        if self.with_reid:
-            features_keep = self.get_feature(tlwhs=dets[:, :4], ori_img=ori_img)
-
         if len(dets) > 0:
-            if self.with_reid:
-                detections = [Tracklet_w_reid(tlwh, s, cate, motion=self.motion, feat=feat) for
-                            (tlwh, s, cate, feat) in zip(dets, scores_keep, cates, features_keep)]
-            else:
-                detections = [Tracklet(tlwh, s, cate, motion=self.motion) for
+            detections = [Tracklet_w_depth(tlwh, s, cate, motion=self.motion) for
                             (tlwh, s, cate) in zip(dets, scores_keep, cates)]
         else:
             detections = []
 
-        ''' Add newly detected tracklets to tracked_tracklets'''
+        ''' Step 1: Add newly detected tracklets to tracked_tracklets'''
         unconfirmed = []
         tracked_tracklets = []  # type: list[Tracklet]
         for track in self.tracked_tracklets:
@@ -166,7 +206,7 @@ class BotTracker(object):
             else:
                 tracked_tracklets.append(track)
 
-        ''' Step 2: First association, with high score detection boxes'''
+        ''' Step 2: First association, with high score detection boxes, depth cascade mathcing'''
         tracklet_pool = joint_tracklets(tracked_tracklets, self.lost_tracklets)
 
         # Predict the current location with Kalman
@@ -178,75 +218,44 @@ class BotTracker(object):
         self.gmc.multi_gmc(tracklet_pool, warp)
         self.gmc.multi_gmc(unconfirmed, warp)
 
-        ious_dists = iou_distance(tracklet_pool, detections)
-        ious_dists_mask = (ious_dists > 0.5)  # high conf iou
-
-        if self.with_reid:
-            # mixed cost matrix
-            emb_dists = embedding_distance(tracklet_pool, detections) / 2.0
-            raw_emb_dists = emb_dists.copy()
-            emb_dists[emb_dists > 0.25] = 1.0
-            emb_dists[ious_dists_mask] = 1.0
-            dists = np.minimum(ious_dists, emb_dists)
-
-        else:
-            dists = ious_dists
+        # depth cascade matching
+        activated_tracklets, refind_tracklets, u_track, u_detection_high = self.DCM(
+                                                                                detections, 
+                                                                                tracklet_pool, 
+                                                                                activated_tracklets,
+                                                                                refind_tracklets, 
+                                                                                levels=3, 
+                                                                                thresh=0.75, 
+                                                                                is_fuse=True)  
         
-        matches, u_track, u_detection = linear_assignment(dists, thresh=0.9)
-
-        for itracked, idet in matches:
-            track = tracklet_pool[itracked]
-            det = detections[idet]
-            if track.state == TrackState.Tracked:
-                track.update(detections[idet], self.frame_id)
-                activated_tracklets.append(track)
-            else:
-                track.re_activate(det, self.frame_id, new_id=False)
-                refind_tracklets.append(track)
-
-        ''' Step 3: Second association, with low score detection boxes'''
-        # association the untrack to the low score detections
+        ''' Step 3: Second association, with low score detection boxes, depth cascade mathcing'''
         if len(dets_second) > 0:
             '''Detections'''
-            detections_second = [Tracklet(tlwh, s, cate, motion=self.motion) for
+            detections_second = [Tracklet_w_depth(tlwh, s, cate, motion=self.motion) for
                           (tlwh, s, cate) in zip(dets_second, scores_second, cates_second)]
         else:
             detections_second = []
 
-        r_tracked_tracklets = [tracklet_pool[i] for i in u_track if tracklet_pool[i].state == TrackState.Tracked]
-        dists = iou_distance(r_tracked_tracklets, detections_second)
-        matches, u_track, u_detection_second = linear_assignment(dists, thresh=0.5)
-        for itracked, idet in matches:
-            track = r_tracked_tracklets[itracked]
-            det = detections_second[idet]
-            if track.state == TrackState.Tracked:
-                track.update(det, self.frame_id)
-                activated_tracklets.append(track)
-            else:
-                track.re_activate(det, self.frame_id, new_id=False)
-                refind_tracklets.append(track)
+        r_tracked_tracklets = [t for t in u_track if t.state == TrackState.Tracked]  
 
-        for it in u_track:
-            track = r_tracked_tracklets[it]
+        activated_tracklets, refind_tracklets, u_track, u_detection_sec = self.DCM(
+                                                                                detections_second, 
+                                                                                r_tracked_tracklets, 
+                                                                                activated_tracklets, 
+                                                                                refind_tracklets, 
+                                                                                levels=3, 
+                                                                                thresh=0.3, 
+                                                                                is_fuse=False) 
+        
+        for track in u_track:
             if not track.state == TrackState.Lost:
                 track.mark_lost()
                 lost_tracklets.append(track)
 
 
         '''Deal with unconfirmed tracks, usually tracks with only one beginning frame'''
-        detections = [detections[i] for i in u_detection]
-        ious_dists = iou_distance(unconfirmed, detections)
-        ious_dists_mask = (ious_dists > 0.5)
-
-        if self.with_reid:
-            emb_dists = embedding_distance(unconfirmed, detections) / 2.0
-            raw_emb_dists = emb_dists.copy()
-            emb_dists[emb_dists > 0.25] = 1.0
-            emb_dists[ious_dists_mask] = 1.0
-            dists = np.minimum(ious_dists, emb_dists)
-        else:
-            dists = ious_dists
-
+        detections = u_detection_high
+        dists = iou_distance(unconfirmed, detections)
        
         matches, u_unconfirmed, u_detection = linear_assignment(dists, thresh=0.7)
 

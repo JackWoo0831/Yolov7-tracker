@@ -29,7 +29,7 @@ class SortTracker(object):
         """
 
         self.frame_id += 1
-        activated_starcks = []
+        activated_tracklets = []
         refind_tracklets = []
         lost_tracklets = []
         removed_tracklets = []
@@ -78,7 +78,7 @@ class SortTracker(object):
             det = detections[idet]
             if track.state == TrackState.Tracked:
                 track.update(detections[idet], self.frame_id)
-                activated_starcks.append(track)
+                activated_tracklets.append(track)
             else:
                 track.re_activate(det, self.frame_id, new_id=False)
                 refind_tracklets.append(track)
@@ -92,7 +92,7 @@ class SortTracker(object):
 
         for itracked, idet in matches:
             unconfirmed[itracked].update(detections[idet], self.frame_id)
-            activated_starcks.append(unconfirmed[itracked])
+            activated_tracklets.append(unconfirmed[itracked])
         for it in u_unconfirmed:
             track = unconfirmed[it]
             track.mark_removed()
@@ -104,7 +104,7 @@ class SortTracker(object):
             if track.score < self.det_thresh:
                 continue
             track.activate(self.frame_id)
-            activated_starcks.append(track)
+            activated_tracklets.append(track)
 
         """ Step 4: Update state"""
         for track in self.lost_tracklets:
@@ -115,7 +115,7 @@ class SortTracker(object):
         # print('Ramained match {} s'.format(t4-t3))
 
         self.tracked_tracklets = [t for t in self.tracked_tracklets if t.state == TrackState.Tracked]
-        self.tracked_tracklets = joint_tracklets(self.tracked_tracklets, activated_starcks)
+        self.tracked_tracklets = joint_tracklets(self.tracked_tracklets, activated_tracklets)
         self.tracked_tracklets = joint_tracklets(self.tracked_tracklets, refind_tracklets)
         self.lost_tracklets = sub_tracklets(self.lost_tracklets, self.tracked_tracklets)
         self.lost_tracklets.extend(lost_tracklets)

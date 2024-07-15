@@ -57,7 +57,7 @@ class BaseKalman:
         # map state space to measurement space
         mean = self.kf.x.copy()
         mean = np.dot(self.kf.H, mean)
-        covariance = self.kf.P.copy()
+        covariance = np.linalg.multi_dot((self.kf.H, self.kf.P, self.kf.H.T))
 
         if only_position:
             mean, covariance = mean[:2], covariance[:2, :2]

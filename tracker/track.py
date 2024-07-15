@@ -26,6 +26,8 @@ from trackers.botsort_tracker import BotTracker
 from trackers.c_biou_tracker import C_BIoUTracker
 from trackers.ocsort_tracker import OCSortTracker
 from trackers.deepsort_tracker import DeepSortTracker
+from trackers.strongsort_tracker import StrongSortTracker
+from trackers.sparse_tracker import SparseTracker
 
 # YOLOX modules
 try:
@@ -66,7 +68,9 @@ TRACKER_DICT = {
     'botsort': BotTracker, 
     'c_bioutrack': C_BIoUTracker, 
     'ocsort': OCSortTracker, 
-    'deepsort': DeepSortTracker
+    'deepsort': DeepSortTracker, 
+    'strongsort': StrongSortTracker, 
+    'sparsetrack': SparseTracker
 }
 
 def get_args():

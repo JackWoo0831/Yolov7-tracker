@@ -35,7 +35,8 @@ and the tracker supports:
 - Bot-SORT ([arxiv2206](https://arxiv.org/pdf/2206.14651.pdf))
 - OCSORT ([CVPR2023](https://openaccess.thecvf.com/content/CVPR2023/papers/Cao_Observation-Centric_SORT_Rethinking_SORT_for_Robust_Multi-Object_Tracking_CVPR_2023_paper.pdf))
 - C_BIoU Track ([arxiv2211](https://arxiv.org/pdf/2211.14317v2.pdf))
-- Strong SORT (***coming soon!***)
+- Strong SORT ([IEEE TMM 2023](https://arxiv.org/pdf/2202.13514))
+- Sparse Track ([arxiv 2306](https://arxiv.org/pdf/2306.05238))
 
 and the reid model supports:
 
@@ -51,9 +52,10 @@ The highlights are:
 
 ## 🗺️ Roadmap
 
-- [ ] Add StrongSort
+- [ x ] Add StrongSort and SparseTrack
 - [ x ] Add save video function
 - [ x ] Add timer function to calculate fps
+- [] Add more ReID modules.
 
 ##  🔨 Installation
 
@@ -182,6 +184,10 @@ For example:
 - C-BIoU Track: `python tracker/track.py --dataset uavdt --detector yolov8 --tracker c_bioutrack --kalman_format bot --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt`
 
 - BoT-SORT: `python tracker/track.py --dataset uavdt --detector yolox --tracker botsort --kalman_format bot --detector_model_path weights/yolox_m_uavdt_50epochs.pth.tar`
+
+- Strong SORT: `python tracker/track.py --dataset uavdt --detector yolov8 --tracker strongsort --kalman_format strongsort --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt`
+
+- Sparse Track: `python tracker/track.py --dataset uavdt --detector yolov8 --tracker sparsetrack --kalman_format bot --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt`
 
 ### ✅ Evaluation 
 

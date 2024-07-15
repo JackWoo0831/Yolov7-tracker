@@ -31,7 +31,8 @@ git checkout v2  # change to v2 branch !!
 - Bot-SORT ([arxiv2206](https://arxiv.org/pdf/2206.14651.pdf))
 - OCSORT ([CVPR2023](https://openaccess.thecvf.com/content/CVPR2023/papers/Cao_Observation-Centric_SORT_Rethinking_SORT_for_Robust_Multi-Object_Tracking_CVPR_2023_paper.pdf))
 - C_BIoU Track ([arxiv2211](https://arxiv.org/pdf/2211.14317v2.pdf))
-- Strong SORT (***即将推出！***)
+- Strong SORT ([IEEE TMM 2023](https://arxiv.org/pdf/2202.13514))
+- Sparse Track ([arxiv 2306](https://arxiv.org/pdf/2306.05238))
 
 REID模型支持：
 
@@ -47,9 +48,10 @@ REID模型支持：
 
 ## 🗺️ 路线图
 
-- [ ] Add StrongSort
+- [ x ] Add StrongSort and SparseTrack
 - [ x ] Add save video function
 - [ x ] Add timer function to calculate fps
+- [] Add more ReID modules.mer function to calculate fps
 
 ##  🔨 安装
 

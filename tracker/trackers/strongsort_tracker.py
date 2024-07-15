@@ -1,5 +1,5 @@
 """
-Bot sort
+Deep Sort
 """
 
 import numpy as np  
@@ -16,8 +16,6 @@ from .matching import *
 from .reid_models.OSNet import *
 from .reid_models.load_model_tools import load_pretrained_weights
 from .reid_models.deepsort_reid import Extractor
-
-from .camera_motion_compensation import GMC
 
 REID_MODEL_DICT = {
     'osnet_x1_0': osnet_x1_0, 
@@ -44,7 +42,9 @@ def load_reid_model(reid_model, reid_model_path):
     
     return model
 
-class BotTracker(object):
+
+class StrongSortTracker(object):
+
     def __init__(self, args, frame_rate=30):
         self.tracked_tracklets = []  # type: list[Tracklet]
         self.lost_tracklets = []  # type: list[Tracklet]
@@ -71,9 +71,10 @@ class BotTracker(object):
             T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
             
+        self.bbox_crop_size = (64, 128) if 'deepsort' in args.reid_model else (128, 128)
 
-        # camera motion compensation module
-        self.gmc = GMC(method='orb', downscale=2, verbose=None)
+        self.lambda_ = 0.98  # the coef of cost mix in eq. 10 in paper
+        
 
     def reid_preprocess(self, obj_bbox):
         """
@@ -84,7 +85,8 @@ class BotTracker(object):
         return: 
         torch.Tensor of shape (c, 128, 256)
         """
-        obj_bbox = cv2.resize(obj_bbox.astype(np.float32) / 255.0, dsize=(128, 128))  # shape: (128, 256, c)
+
+        obj_bbox = cv2.resize(obj_bbox.astype(np.float32) / 255.0, dsize=self.bbox_crop_size)  # shape: (h, w, c)
 
         return self.crop_transforms(obj_bbox)
 
@@ -98,10 +100,12 @@ class BotTracker(object):
 
         for tlwh in tlwhs:
             tlwh = list(map(int, tlwh))
-            # if any(tlbr_ == -1 for tlbr_ in tlwh):
-            #     print(tlwh)
+
+            # limit to the legal range
+            tlwh[0], tlwh[1] = max(tlwh[0], 0), max(tlwh[1], 0)
             
             tlbr_tensor = self.reid_preprocess(ori_img[tlwh[1]: tlwh[1] + tlwh[3], tlwh[0]: tlwh[0] + tlwh[2]])
+
             obj_bbox.append(tlbr_tensor)
         
         if not obj_bbox:
@@ -112,11 +116,10 @@ class BotTracker(object):
         
         features = self.reid_model(obj_bbox)  # shape: (num_of_objects, feature_dim)
         return features.cpu().detach().numpy()
-
-
+    
     def update(self, output_results, img, ori_img):
         """
-        output_results: processed detections (scale to original size) tlwh format
+        output_results: processed detections (scale to original size) tlbr format
         """
 
         self.frame_id += 1
@@ -130,30 +133,19 @@ class BotTracker(object):
         categories = output_results[:, -1]
 
         remain_inds = scores > self.args.conf_thresh
-        inds_low = scores > 0.1
-        inds_high = scores < self.args.conf_thresh
 
-        inds_second = np.logical_and(inds_low, inds_high)
-        dets_second = bboxes[inds_second]
         dets = bboxes[remain_inds]
 
         cates = categories[remain_inds]
-        cates_second = categories[inds_second]
         
         scores_keep = scores[remain_inds]
-        scores_second = scores[inds_second]
 
-        """Step 1: Extract reid features"""
-        if self.with_reid:
-            features_keep = self.get_feature(tlwhs=dets[:, :4], ori_img=ori_img)
+        features_keep = self.get_feature(tlwhs=dets[:, :4], ori_img=ori_img)
 
         if len(dets) > 0:
-            if self.with_reid:
-                detections = [Tracklet_w_reid(tlwh, s, cate, motion=self.motion, feat=feat) for
-                            (tlwh, s, cate, feat) in zip(dets, scores_keep, cates, features_keep)]
-            else:
-                detections = [Tracklet(tlwh, s, cate, motion=self.motion) for
-                            (tlwh, s, cate) in zip(dets, scores_keep, cates)]
+            '''Detections'''
+            detections = [Tracklet_w_reid(tlwh, s, cate, motion=self.motion, feat=feat) for
+                          (tlwh, s, cate, feat) in zip(dets, scores_keep, cates, features_keep)]
         else:
             detections = []
 
@@ -166,33 +158,16 @@ class BotTracker(object):
             else:
                 tracked_tracklets.append(track)
 
-        ''' Step 2: First association, with high score detection boxes'''
+        ''' Step 2: First association, with appearance'''
         tracklet_pool = joint_tracklets(tracked_tracklets, self.lost_tracklets)
 
         # Predict the current location with Kalman
         for tracklet in tracklet_pool:
             tracklet.predict()
 
-        # Camera motion compensation
-        warp = self.gmc.apply(ori_img, dets)
-        self.gmc.multi_gmc(tracklet_pool, warp)
-        self.gmc.multi_gmc(unconfirmed, warp)
-
-        ious_dists = iou_distance(tracklet_pool, detections)
-        ious_dists_mask = (ious_dists > 0.5)  # high conf iou
-
-        if self.with_reid:
-            # mixed cost matrix
-            emb_dists = embedding_distance(tracklet_pool, detections) / 2.0
-            raw_emb_dists = emb_dists.copy()
-            emb_dists[emb_dists > 0.25] = 1.0
-            emb_dists[ious_dists_mask] = 1.0
-            dists = np.minimum(ious_dists, emb_dists)
-
-        else:
-            dists = ious_dists
-        
-        matches, u_track, u_detection = linear_assignment(dists, thresh=0.9)
+        # vallina matching
+        cost_matrix = self.gated_metric(tracklet_pool, detections)
+        matches, u_track, u_detection = linear_assignment(cost_matrix, thresh=0.9)
 
         for itracked, idet in matches:
             track = tracklet_pool[itracked]
@@ -204,49 +179,35 @@ class BotTracker(object):
                 track.re_activate(det, self.frame_id, new_id=False)
                 refind_tracklets.append(track)
 
-        ''' Step 3: Second association, with low score detection boxes'''
-        # association the untrack to the low score detections
-        if len(dets_second) > 0:
-            '''Detections'''
-            detections_second = [Tracklet(tlwh, s, cate, motion=self.motion) for
-                          (tlwh, s, cate) in zip(dets_second, scores_second, cates_second)]
-        else:
-            detections_second = []
+        '''Step 3: Second association, with iou'''
+        tracklet_for_iou = [tracklet_pool[i] for i in u_track if tracklet_pool[i].state == TrackState.Tracked]
+        detection_for_iou = [detections[i] for i in u_detection]
 
-        r_tracked_tracklets = [tracklet_pool[i] for i in u_track if tracklet_pool[i].state == TrackState.Tracked]
-        dists = iou_distance(r_tracked_tracklets, detections_second)
-        matches, u_track, u_detection_second = linear_assignment(dists, thresh=0.5)
+        dists = iou_distance(tracklet_for_iou, detection_for_iou)
+
+        matches, u_track, u_detection = linear_assignment(dists, thresh=0.5)
+
         for itracked, idet in matches:
-            track = r_tracked_tracklets[itracked]
-            det = detections_second[idet]
+            track = tracklet_for_iou[itracked]
+            det = detection_for_iou[idet]
             if track.state == TrackState.Tracked:
-                track.update(det, self.frame_id)
+                track.update(detection_for_iou[idet], self.frame_id)
                 activated_tracklets.append(track)
             else:
                 track.re_activate(det, self.frame_id, new_id=False)
                 refind_tracklets.append(track)
 
         for it in u_track:
-            track = r_tracked_tracklets[it]
+            track = tracklet_for_iou[it]
             if not track.state == TrackState.Lost:
                 track.mark_lost()
                 lost_tracklets.append(track)
 
 
+
         '''Deal with unconfirmed tracks, usually tracks with only one beginning frame'''
-        detections = [detections[i] for i in u_detection]
-        ious_dists = iou_distance(unconfirmed, detections)
-        ious_dists_mask = (ious_dists > 0.5)
-
-        if self.with_reid:
-            emb_dists = embedding_distance(unconfirmed, detections) / 2.0
-            raw_emb_dists = emb_dists.copy()
-            emb_dists[emb_dists > 0.25] = 1.0
-            emb_dists[ious_dists_mask] = 1.0
-            dists = np.minimum(ious_dists, emb_dists)
-        else:
-            dists = ious_dists
-
+        detections = [detection_for_iou[i] for i in u_detection]
+        dists = iou_distance(unconfirmed, detections)
        
         matches, u_unconfirmed, u_detection = linear_assignment(dists, thresh=0.7)
 
@@ -286,7 +247,44 @@ class BotTracker(object):
         output_tracklets = [track for track in self.tracked_tracklets if track.is_activated]
 
         return output_tracklets
+    
+    def gated_metric(self, tracks, dets):
+        """
+        get cost matrix, firstly calculate apperence cost, then filter by Kalman state.
 
+        tracks: List[STrack]
+        dets: List[STrack]
+        """
+        apperance_dist = embedding_distance(tracks=tracks, detections=dets, metric='cosine')
+        cost_matrix = self.gate_cost_matrix(apperance_dist, tracks, dets, )
+        return cost_matrix
+    
+    def gate_cost_matrix(self, cost_matrix, tracks, dets, max_apperance_thresh=0.15, gated_cost=1e5, only_position=False):
+        """
+        gate cost matrix by calculating the Kalman state distance and constrainted by
+        0.95 confidence interval of x2 distribution
+
+        cost_matrix: np.ndarray, shape (len(tracks), len(dets))
+        tracks: List[STrack]
+        dets: List[STrack]
+        gated_cost: a very largt const to infeasible associations
+        only_position: use [xc, yc, a, h] as state vector or only use [xc, yc]
+
+        return:
+        updated cost_matirx, np.ndarray
+        """
+        gating_dim = 2 if only_position else 4
+        gating_threshold = chi2inv95[gating_dim]
+        measurements = np.asarray([Tracklet.tlwh_to_xyah(det.tlwh) for det in dets])  # (len(dets), 4)
+
+        cost_matrix[cost_matrix > max_apperance_thresh] = gated_cost
+        for row, track in enumerate(tracks):
+            gating_distance = track.kalman_filter.gating_distance(measurements, )
+            cost_matrix[row, gating_distance > gating_threshold] = gated_cost
+
+            cost_matrix[row] = self.lambda_ * cost_matrix[row] + (1 - self.lambda_) *  gating_distance
+        return cost_matrix
+    
 
 def joint_tracklets(tlista, tlistb):
     exists = {}

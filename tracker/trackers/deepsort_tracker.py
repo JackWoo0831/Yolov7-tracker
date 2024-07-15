@@ -121,7 +121,7 @@ class DeepSortTracker(object):
         """
 
         self.frame_id += 1
-        activated_starcks = []
+        activated_tracklets = []
         refind_tracklets = []
         lost_tracklets = []
         removed_tracklets = []
@@ -176,7 +176,7 @@ class DeepSortTracker(object):
             det = detections[idet]
             if track.state == TrackState.Tracked:
                 track.update(detections[idet], self.frame_id)
-                activated_starcks.append(track)
+                activated_tracklets.append(track)
             else:
                 track.re_activate(det, self.frame_id, new_id=False)
                 refind_tracklets.append(track)
@@ -194,10 +194,16 @@ class DeepSortTracker(object):
             det = detection_for_iou[idet]
             if track.state == TrackState.Tracked:
                 track.update(detection_for_iou[idet], self.frame_id)
-                activated_starcks.append(track)
+                activated_tracklets.append(track)
             else:
                 track.re_activate(det, self.frame_id, new_id=False)
                 refind_tracklets.append(track)
+
+        for it in u_track:
+            track = tracklet_for_iou[it]
+            if not track.state == TrackState.Lost:
+                track.mark_lost()
+                lost_tracklets.append(track)
 
 
 
@@ -209,7 +215,7 @@ class DeepSortTracker(object):
 
         for itracked, idet in matches:
             unconfirmed[itracked].update(detections[idet], self.frame_id)
-            activated_starcks.append(unconfirmed[itracked])
+            activated_tracklets.append(unconfirmed[itracked])
         for it in u_unconfirmed:
             track = unconfirmed[it]
             track.mark_removed()
@@ -221,7 +227,7 @@ class DeepSortTracker(object):
             if track.score < self.det_thresh:
                 continue
             track.activate(self.frame_id)
-            activated_starcks.append(track)
+            activated_tracklets.append(track)
 
         """ Step 5: Update state"""
         for track in self.lost_tracklets:
@@ -232,7 +238,7 @@ class DeepSortTracker(object):
         # print('Ramained match {} s'.format(t4-t3))
 
         self.tracked_tracklets = [t for t in self.tracked_tracklets if t.state == TrackState.Tracked]
-        self.tracked_tracklets = joint_tracklets(self.tracked_tracklets, activated_starcks)
+        self.tracked_tracklets = joint_tracklets(self.tracked_tracklets, activated_tracklets)
         self.tracked_tracklets = joint_tracklets(self.tracked_tracklets, refind_tracklets)
         self.lost_tracklets = sub_tracklets(self.lost_tracklets, self.tracked_tracklets)
         self.lost_tracklets.extend(lost_tracklets)
@@ -275,7 +281,7 @@ class DeepSortTracker(object):
 
         cost_matrix[cost_matrix > max_apperance_thresh] = gated_cost
         for row, track in enumerate(tracks):
-            gating_distance = track.kalman.gating_distance(measurements, )
+            gating_distance = track.kalman_filter.gating_distance(measurements, )
             cost_matrix[row, gating_distance > gating_threshold] = gated_cost
         return cost_matrix
     

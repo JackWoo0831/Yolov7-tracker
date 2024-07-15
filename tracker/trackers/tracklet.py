@@ -10,19 +10,22 @@ from .kalman_filters.bytetrack_kalman import ByteKalman
 from .kalman_filters.botsort_kalman import BotKalman
 from .kalman_filters.ocsort_kalman import OCSORTKalman
 from .kalman_filters.sort_kalman import SORTKalman
+from .kalman_filters.strongsort_kalman import NSAKalman
 
 MOTION_MODEL_DICT = {
     'sort': SORTKalman, 
     'byte': ByteKalman, 
     'bot': BotKalman, 
-    'ocsort': OCSORTKalman
+    'ocsort': OCSORTKalman, 
+    'strongsort': NSAKalman, 
 }
 
 STATE_CONVERT_DICT = {
     'sort': 'xysa', 
     'byte': 'xyah', 
     'bot': 'xywh', 
-    'ocsort': 'xysa'
+    'ocsort': 'xysa', 
+    'strongsort': 'xyah'
 }
 
 class Tracklet(BaseTrack):
@@ -33,7 +36,7 @@ class Tracklet(BaseTrack):
         self.is_activated = False
 
         self.score = score
-        self.tracklet_len = 0
+        self.category = category
 
         # kalman
         self.motion = motion
@@ -44,16 +47,13 @@ class Tracklet(BaseTrack):
         # init kalman
         self.kalman_filter.initialize(self.convert_func(self._tlwh))
 
-        self.category = category 
-
-
     def predict(self):
         self.kalman_filter.predict()
+        self.time_since_update += 1
 
     def activate(self, frame_id):
         self.track_id = self.next_id()
 
-        self.tracklet_len = 0
         self.state = TrackState.Tracked
         if frame_id == 1:
             self.is_activated = True
@@ -65,7 +65,7 @@ class Tracklet(BaseTrack):
         
         # TODO different convert
         self.kalman_filter.update(self.convert_func(new_track.tlwh))
-        self.tracklet_len = 0
+
         self.state = TrackState.Tracked
         self.is_activated = True
         self.frame_id = frame_id
@@ -75,16 +75,16 @@ class Tracklet(BaseTrack):
 
     def update(self, new_track, frame_id):
         self.frame_id = frame_id
-        self.tracklet_len += 1
 
         new_tlwh = new_track.tlwh
+        self.score = new_track.score
 
         self.kalman_filter.update(self.convert_func(new_tlwh))
 
         self.state = TrackState.Tracked
         self.is_activated = True
 
-        self.score = new_track.score
+        self.time_since_update = 0
     
     @property
     def tlwh(self):
@@ -125,11 +125,12 @@ class Tracklet_w_reid(Tracklet):
                  feat=None, feat_history=50):
         super().__init__(tlwh, score, category, motion)
 
-        self.smooth_feat = None
-        self.curr_feat = None
+        self.smooth_feat = None  # EMA feature
+        self.curr_feat = None  # current feature
+        self.features = deque([], maxlen=feat_history)  # all features
         if feat is not None:
             self.update_features(feat)
-        self.features = deque([], maxlen=feat_history)
+
         self.alpha = 0.9
 
     def update_features(self, feat):
@@ -145,8 +146,10 @@ class Tracklet_w_reid(Tracklet):
     def re_activate(self, new_track, frame_id, new_id=False):
         
         # TODO different convert
-        self.kalman_filter.update(self.convert_func(new_track.tlwh))
-        self.tracklet_len = 0
+        if isinstance(self.kalman_filter, NSAKalman):
+            self.kalman_filter.update(self.convert_func(new_track.tlwh), new_track.score)
+        else:
+            self.kalman_filter.update(self.convert_func(new_track.tlwh))
 
         if new_track.curr_feat is not None:
             self.update_features(new_track.curr_feat)
@@ -160,19 +163,23 @@ class Tracklet_w_reid(Tracklet):
 
     def update(self, new_track, frame_id):
         self.frame_id = frame_id
-        self.tracklet_len += 1
 
         new_tlwh = new_track.tlwh
+        self.score = new_track.score
 
-        self.kalman_filter.update(self.convert_func(new_tlwh))
+        if isinstance(self.kalman_filter, NSAKalman):
+            self.kalman_filter.update(self.convert_func(new_tlwh), self.score)
+        else:
+            self.kalman_filter.update(self.convert_func(new_tlwh))
 
         self.state = TrackState.Tracked
         self.is_activated = True
 
-        self.score = new_track.score
 
         if new_track.curr_feat is not None:
             self.update_features(new_track.curr_feat)
+
+        self.time_since_update = 0
 
 
 class Tracklet_w_velocity(Tracklet):
@@ -203,19 +210,19 @@ class Tracklet_w_velocity(Tracklet):
         self.kalman_filter.predict()
 
         self.age += 1
+        self.time_since_update += 1
 
     def update(self, new_track, frame_id):
         self.frame_id = frame_id
-        self.tracklet_len += 1
 
         new_tlwh = new_track.tlwh
+        self.score = new_track.score
 
         self.kalman_filter.update(self.convert_func(new_tlwh))
 
         self.state = TrackState.Tracked
         self.is_activated = True
-
-        self.score = new_track.score
+        self.time_since_update = 0
 
         # update velocity and history buffer
         new_tlbr = Tracklet_w_bbox_buffer.tlwh_to_tlbr(new_tlwh)
@@ -280,7 +287,7 @@ class Tracklet_w_bbox_buffer(Tracklet):
         
         # TODO different convert
         self.kalman_filter.update(self.convert_func(new_track.tlwh))
-        self.tracklet_len = 0
+
         self.state = TrackState.Tracked
         self.is_activated = True
         self.frame_id = frame_id
@@ -303,16 +310,16 @@ class Tracklet_w_bbox_buffer(Tracklet):
 
     def update(self, new_track, frame_id):
         self.frame_id = frame_id
-        self.tracklet_len += 1
 
         new_tlwh = new_track.tlwh
+        self.score = new_track.score
 
         self.kalman_filter.update(self.convert_func(new_tlwh))
 
         self.state = TrackState.Tracked
         self.is_activated = True
 
-        self.score = new_track.score
+        self.time_since_update = 0
 
         # update stored bbox
         if (len(self.origin_bbox_buffer) > self.n):
@@ -335,3 +342,25 @@ class Tracklet_w_bbox_buffer(Tracklet):
         else:  # no unmatched frames, use current detection as motion state
             self.motion_state1 = self.get_buffer_bbox(level=1, bbox=new_tlwh)
             self.motion_state2 = self.get_buffer_bbox(level=2, bbox=new_tlwh)
+
+
+class Tracklet_w_depth(Tracklet):
+    """
+    tracklet with depth info (i.e., 2000 - y2), for SparseTrack
+    """
+
+    def __init__(self, tlwh, score, category, motion='byte'):
+        super().__init__(tlwh, score, category, motion)
+
+
+    @property
+    # @jit(nopython=True)
+    def deep_vec(self):
+        """Convert bounding box to format `((top left, bottom right)`, i.e.,
+        `(top left, bottom right)`.
+        """
+        ret = self.tlwh.copy()
+        cx = ret[0] + 0.5 * ret[2]
+        y2 = ret[1] +  ret[3]
+        lendth = 2000 - y2
+        return np.asarray([cx, y2, lendth], dtype=np.float)
