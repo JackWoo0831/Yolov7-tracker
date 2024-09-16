@@ -11,13 +11,15 @@ from .kalman_filters.botsort_kalman import BotKalman
 from .kalman_filters.ocsort_kalman import OCSORTKalman
 from .kalman_filters.sort_kalman import SORTKalman
 from .kalman_filters.strongsort_kalman import NSAKalman
+from .kalman_filters.ucmctrack_kalman import UCMCKalman
 
 MOTION_MODEL_DICT = {
     'sort': SORTKalman, 
     'byte': ByteKalman, 
     'bot': BotKalman, 
     'ocsort': OCSORTKalman, 
-    'strongsort': NSAKalman, 
+    'strongsort': NSAKalman,
+    'ucmc': UCMCKalman,  
 }
 
 STATE_CONVERT_DICT = {
@@ -25,7 +27,8 @@ STATE_CONVERT_DICT = {
     'byte': 'xyah', 
     'bot': 'xywh', 
     'ocsort': 'xysa', 
-    'strongsort': 'xyah'
+    'strongsort': 'xyah',
+    'ucmc': 'ground'
 }
 
 class Tracklet(BaseTrack):
@@ -364,3 +367,123 @@ class Tracklet_w_depth(Tracklet):
         y2 = ret[1] +  ret[3]
         lendth = 2000 - y2
         return np.asarray([cx, y2, lendth], dtype=np.float)
+    
+
+class Tracklet_w_UCMC(Tracklet):
+    """
+    tracklet with a grounding map and uniform camera motion compensation
+    """
+
+    configs = dict(
+        sigma_x=1.0,  # noise factor in x axis (Eq. 11)
+        sigma_y=1.0,  # noise factor in y axis (Eq. 11)
+        vmax=1.0,  # TODO
+        dt=1/30,  # interval between frames
+    )
+
+    KiKo = None  # the multiplication of intrinsic matrix and extrinsic matrix
+    A = None  # The A matrix in Eq. 17
+    InvA = None 
+
+    def __init__(self, tlwh, score, category, motion='ucmc'):
+
+        # initial position
+        self._tlwh = np.asarray(tlwh, dtype=np.float)
+        self.is_activated = False
+
+        self.score = score
+        self.category = category
+
+        # kalman
+        self.motion = motion
+        self.kalman_filter = MOTION_MODEL_DICT[motion](**self.configs)
+        
+        self.convert_func = self.__getattribute__('tlwh_to_' + STATE_CONVERT_DICT[motion])
+
+        # init kalman
+        self.ground_xy, self.sigma_ground_xy = self.convert_func(self._tlwh)  # save as property variable
+        self.kalman_filter.initialize(observation=self.ground_xy, R=self.sigma_ground_xy)
+        
+    def ground_to_tlwh(self, ):
+        x_vector = self.kalman_filter.kf.x 
+        x, y = x_vector[0, 0], x_vector[2, 0]  # get ground coordinate
+
+        ground_xy = np.array([x, y, 1])
+
+        xc_yc = np.dot(self.A, ground_xy)
+        xc_yc[:2] /= xc_yc[2]  # normalization
+
+        w, h = self._tlwh[2], self._tlwh[3]
+        xc, yc = xc_yc[0], xc_yc[1]
+
+        ret = np.array([xc - 0.5 * w, yc - h, w, h])  # note xc, yc is the center of bottom line of bbox
+
+        return ret
+
+
+    def tlwh_to_ground(self, tlwh=None):
+        """
+        Key function, map tlwh in camera plane to world coordinate ground
+
+        """
+
+        if tlwh is None: tlwh = self._tlwh
+
+        xc, yc = tlwh[0] + tlwh[2] * 0.5, tlwh[1] + tlwh[3]  # the center of bottom line of bbox
+        # the uncertainty (variance) of xc, yc
+        sigma_xc = max(2, min(13, 0.05 * tlwh[2]))
+        sigma_yc = max(2, min(10, 0.05 * tlwh[3]))
+        sigma = np.array([[sigma_xc * sigma_xc, 0], 
+                          [0, sigma_yc * sigma_yc]])        
+        
+        # map to ground
+        xc_yc = np.array([xc, yc, 1])
+        
+        b = np.dot(self.InvA, xc_yc)  # Eq. 19
+        gamma = 1. / b[2]
+        C = gamma * self.InvA[:2, :2] - (gamma**2) * b[:2] * self.InvA[2, :2]  # Eq. 27
+ 
+        ground_xy = b[:2] * gamma  # Eq. 20
+        sigma_ground_xy = np.dot(np.dot(C, sigma), C.T)  # Eq. 26
+
+        return ground_xy, sigma_ground_xy
+
+    def cal_maha_distance(self, det_ground_xy, det_sigma_ground_xy):
+        """
+        cal a mahalanobis dist between a track and det (Eq. 8)
+        """
+        
+        diff = det_ground_xy[:, None] - np.dot(self.kalman_filter.kf.H, self.kalman_filter.kf.x)  # match the dimension
+        S = np.dot(self.kalman_filter.kf.H, np.dot(self.kalman_filter.kf.P, self.kalman_filter.kf.H.T)) + det_sigma_ground_xy
+
+        SI = np.linalg.inv(S)
+        mahalanobis = np.dot(diff.T, np.dot(SI, diff))
+        logdet = np.log(np.linalg.det(S))
+        return mahalanobis[0, 0] + logdet
+    
+
+    def update(self, new_track, frame_id):
+        self.frame_id = frame_id
+
+        self.score = new_track.score
+
+        self.kalman_filter.update(z=new_track.ground_xy, R=new_track.sigma_ground_xy)
+
+        self.state = TrackState.Tracked
+        self.is_activated = True
+
+        self.time_since_update = 0
+
+        self._tlwh = new_track._tlwh  # update the tlwh directly for maintaining w and h
+
+    def re_activate(self, new_track, frame_id, new_id=False):
+        
+        # TODO different convert
+        self.kalman_filter.update(z=new_track.ground_xy, R=new_track.sigma_ground_xy)
+
+        self.state = TrackState.Tracked
+        self.is_activated = True
+        self.frame_id = frame_id
+        if new_id:
+            self.track_id = self.next_id()
+        self.score = new_track.score

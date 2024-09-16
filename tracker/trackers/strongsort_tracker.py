@@ -1,5 +1,5 @@
 """
-Deep Sort
+Strong Sort
 """
 
 import numpy as np  

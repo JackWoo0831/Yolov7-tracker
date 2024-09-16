@@ -28,6 +28,7 @@ from trackers.ocsort_tracker import OCSortTracker
 from trackers.deepsort_tracker import DeepSortTracker
 from trackers.strongsort_tracker import StrongSortTracker
 from trackers.sparse_tracker import SparseTracker
+from trackers.ucmc_tracker import UCMCTracker
 
 # YOLOX modules
 try:
@@ -70,7 +71,8 @@ TRACKER_DICT = {
     'ocsort': OCSortTracker, 
     'deepsort': DeepSortTracker, 
     'strongsort': StrongSortTracker, 
-    'sparsetrack': SparseTracker
+    'sparsetrack': SparseTracker, 
+    'ucmctrack': UCMCTracker, 
 }
 
 def get_args():
@@ -114,6 +116,9 @@ def get_args():
     parser.add_argument('--save_videos', action='store_true', help='save tracking results (video)')
     
     parser.add_argument('--track_eval', type=bool, default=True, help='Use TrackEval to evaluate')
+
+    """camera parameter"""
+    parser.add_argument('--camera_parameter_folder', type=str, default='./tracker/cam_param_files', help='folder path of camera parameter files')
 
     return parser.parse_args()
 
@@ -203,6 +208,9 @@ def main(args, dataset_cfgs):
         dataset = TestDataset(DATA_ROOT, SPLIT, seq_name=seq, img_size=model_img_size, model=args.detector, stride=stride)
 
         data_loader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False)
+
+        # store the seq name, for conveniently reading the camera param file w.r.t. each sequence
+        args.cam_param_file = os.path.join(args.camera_parameter_folder, args.dataset, seq + '.txt')  
 
         tracker = TRACKER_DICT[args.tracker](args, )
 

@@ -37,6 +37,7 @@ and the tracker supports:
 - C_BIoU Track ([arxiv2211](https://arxiv.org/pdf/2211.14317v2.pdf))
 - Strong SORT ([IEEE TMM 2023](https://arxiv.org/pdf/2202.13514))
 - Sparse Track ([arxiv 2306](https://arxiv.org/pdf/2306.05238))
+- UCMC Track ([AAAI 2024](http://arxiv.org/abs/2312.08952))
 
 and the reid model supports:
 
@@ -52,9 +53,7 @@ The highlights are:
 
 ## 🗺️ Roadmap
 
-- [ x ] Add StrongSort and SparseTrack
-- [ x ] Add save video function
-- [ x ] Add timer function to calculate fps
+- [ x ] Add UCMC Track
 - [] Add more ReID modules.
 
 ##  🔨 Installation
@@ -188,6 +187,15 @@ For example:
 - Strong SORT: `python tracker/track.py --dataset uavdt --detector yolov8 --tracker strongsort --kalman_format strongsort --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt`
 
 - Sparse Track: `python tracker/track.py --dataset uavdt --detector yolov8 --tracker sparsetrack --kalman_format bot --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt`
+
+- UCMC Track: `python tracker/track.py --dataset mot17 --detector yolox --tracker ucmctrack --kalman_format ucmc --detector_model_path weights/bytetrack_m_mot17.pth.tar --camera_parameter_folder ./tracker/cam_param_files`
+
+> **Important notes for UCMC Track:**
+> 
+> 1. Camera parameters. The UCMC Track need the intrinsic and extrinsic parameter of camera. Please organize like the format of `tracker/cam_param_files/uavdt/M0101.txt`. One video sequence corresponds to one txt file. If you do not have the labelled parameters, you can refer to the estimating toolbox in original repo ([https://github.com/corfyi/UCMCTrack](https://github.com/corfyi/UCMCTrack)).
+> 
+> 2. The code does not contain the camera motion compensation part between every two frame, please refer to [https://github.com/corfyi/UCMCTrack/issues/12](https://github.com/corfyi/UCMCTrack/issues/12). From my perspective, since the algorithm name is 'uniform', the update of compensation between every two frames is not necessary.
+
 
 ### ✅ Evaluation 
 

@@ -33,6 +33,7 @@ git checkout v2  # change to v2 branch !!
 - C_BIoU Track ([arxiv2211](https://arxiv.org/pdf/2211.14317v2.pdf))
 - Strong SORT ([IEEE TMM 2023](https://arxiv.org/pdf/2202.13514))
 - Sparse Track ([arxiv 2306](https://arxiv.org/pdf/2306.05238))
+- UCMC Track ([AAAI 2024](http://arxiv.org/abs/2312.08952))
 
 REID模型支持：
 
@@ -48,10 +49,8 @@ REID模型支持：
 
 ## 🗺️ 路线图
 
-- [ x ] Add StrongSort and SparseTrack
-- [ x ] Add save video function
-- [ x ] Add timer function to calculate fps
-- [] Add more ReID modules.mer function to calculate fps
+- [ x ] Add UCMC Track
+- [] Add more ReID modules.
 
 ##  🔨 安装
 
@@ -180,6 +179,14 @@ python tracker/track.py --dataset ${dataset name, related with the yaml file} --
 - C-BIoU Track: `python tracker/track.py --dataset uavdt --detector yolov8 --tracker c_bioutrack --kalman_format bot --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt`
 
 - BoT-SORT: `python tracker/track.py --dataset uavdt --detector yolox --tracker botsort --kalman_format bot --detector_model_path weights/yolox_m_uavdt_50epochs.pth.tar`
+
+- UCMC Track: `python tracker/track.py --dataset mot17 --detector yolox --tracker ucmctrack --kalman_format ucmc --detector_model_path weights/bytetrack_m_mot17.pth.tar --camera_parameter_folder ./tracker/cam_param_files`
+
+>**UCMC Track的重要提示：**
+> 
+> 1. 相机参数. UCMC Track需要相机的内参和外参. 请按照`tracker/cam_ram_files/uavdt/M0101.txt`的格式组织. 一个视频序列对应一个txt文件. 如果您没有标记的参数, 可以参考原始仓库中的估算工具箱([https://github.com/corfyi/UCMCTrack](https://github.com/corfyi/UCMCTrack)).
+> 
+> 2. 该代码不包含每两帧之间的相机运动补偿部分, 请参阅[https://github.com/corfyi/UCMCTrack/issues/12](https://github.com/corfyi/UCMCTrack/issues/12). 在我看来, 既然算法叫"统一相机运动补偿", 因此不需要每两帧之间再更新补偿. 
 
 ### ✅ 评估
 
