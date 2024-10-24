@@ -1,16 +1,16 @@
 """
-OC Sort
+Hybrid Sort
 """
 
 import numpy as np
 from collections import deque
 from .basetrack import BaseTrack, TrackState
-from .tracklet import Tracklet, Tracklet_w_velocity
+from .tracklet import Tracklet, Tracklet_w_velocity_four_corner
 from .matching import *
 
 from cython_bbox import bbox_overlaps as bbox_ious
 
-class OCSortTracker(object):
+class HybridSortTracker(object):
     def __init__(self, args, frame_rate=30):
         self.tracked_tracklets = []  # type: list[Tracklet]
         self.lost_tracklets = []  # type: list[Tracklet]
@@ -69,7 +69,7 @@ class OCSortTracker(object):
 
         if len(dets) > 0:
             '''Detections'''
-            detections = [Tracklet_w_velocity(tlwh, s, cate, motion=self.motion) for
+            detections = [Tracklet_w_velocity_four_corner(tlwh, s, cate, motion=self.motion) for
                           (tlwh, s, cate) in zip(dets, scores_keep, cates)]
         else:
             detections = []
@@ -83,11 +83,11 @@ class OCSortTracker(object):
             else:
                 tracked_tracklets.append(track)
 
-        ''' Step 2: First association, Observation Centric Momentum'''
+        ''' Step 2: First association, Weak Cues (four corner confidence and score)'''
         tracklet_pool = joint_tracklets(tracked_tracklets, self.lost_tracklets)
 
         velocities = np.array(
-            [trk.velocity if trk.velocity is not None else np.array((0, 0)) for trk in tracklet_pool])
+            [trk.get_velocity() for trk in tracklet_pool])  # (N, 4, 2)
         
         # last observation, obervation-centric
         # last_boxes = np.array([trk.last_observation for trk in tracklet_pool])
@@ -101,11 +101,10 @@ class OCSortTracker(object):
         for tracklet in tracklet_pool:
             tracklet.predict()
 
-        # Observation centric cost matrix and assignment
-        matches, u_track, u_detection = observation_centric_association(
-            tracklets=tracklet_pool, detections=detections, iou_threshold=0.3, 
-            velocities=velocities, previous_obs=k_observations, vdc_weight=0.05
-        )
+        # weak cues cost matrix (hmiou + four corner velocity) and assignment
+        matches, u_track, u_detection = association_weak_cues(
+            tracklets=tracklet_pool, detections=detections, velocities=velocities, 
+            previous_obs=k_observations, vdc_weight=0.05)
 
         for itracked, idet in matches:
             track = tracklet_pool[itracked]
@@ -121,14 +120,13 @@ class OCSortTracker(object):
         # association the untrack to the low score detections
         if len(dets_second) > 0:
             '''Detections'''
-            detections_second = [Tracklet_w_velocity(tlwh, s, cate, motion=self.motion) for
+            detections_second = [Tracklet_w_velocity_four_corner(tlwh, s, cate, motion=self.motion) for
                           (tlwh, s, cate) in zip(dets_second, scores_second, cates_second)]
         else:
             detections_second = []
-
         r_tracked_tracklets = [tracklet_pool[i] for i in u_track if tracklet_pool[i].state == TrackState.Tracked]
 
-        dists = iou_distance(r_tracked_tracklets, detections_second)
+        dists = hm_iou_distance(r_tracked_tracklets, detections_second) - score_distance(r_tracked_tracklets, detections_second)
 
         matches, u_track, u_detection_second = linear_assignment(dists, thresh=0.5)
         for itracked, idet in matches:
@@ -146,8 +144,8 @@ class OCSortTracker(object):
         r_tracked_tracklets = [r_tracked_tracklets[i] for i in u_track]  # remain tracklets from last step
         r_detections = [detections[i] for i in u_detection]  # high-conf remain detections
 
-        dists = 1. - ious(atlbrs=[t.last_observation[: 4] for t in r_tracked_tracklets],  # parse bbox directly
-                          btlbrs=[d.tlbr for d in r_detections])
+        dists = hm_iou_distance(atracks=[t.last_observation[: 4] for t in r_tracked_tracklets],  # parse bbox directly
+                          btracks=[d.tlbr for d in r_detections])
 
         matches, u_track, u_detection = linear_assignment(dists, thresh=0.5)
 
@@ -196,8 +194,6 @@ class OCSortTracker(object):
             if self.frame_id - track.end_frame > self.max_time_lost:
                 track.mark_removed()
                 removed_tracklets.append(track)
-
-        # print('Ramained match {} s'.format(t4-t3))
 
         self.tracked_tracklets = [t for t in self.tracked_tracklets if t.state == TrackState.Tracked]
         self.tracked_tracklets = joint_tracklets(self.tracked_tracklets, activated_tracklets)

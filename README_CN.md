@@ -13,6 +13,9 @@ git checkout v2  # change to v2 branch !!
 
 🙌 ***如果您有任何关于添加跟踪器的建议***，请在Issues部分留言并附上论文标题或链接！欢迎大家一起来让这个repo变得更好
 
+## 🗺️ 最近更新
+
+- ***2024.10.24*** 增加了 Hybrid SORT 并且修复了OC-SORT的一些bug和错误。
 
 
 ## ❤️ 介绍
@@ -34,6 +37,7 @@ git checkout v2  # change to v2 branch !!
 - Strong SORT ([IEEE TMM 2023](https://arxiv.org/pdf/2202.13514))
 - Sparse Track ([arxiv 2306](https://arxiv.org/pdf/2306.05238))
 - UCMC Track ([AAAI 2024](http://arxiv.org/abs/2312.08952))
+- Hybrid SORT([AAAI 2024](https://ojs.aaai.org/index.php/AAAI/article/view/28471))
 
 REID模型支持：
 
@@ -181,6 +185,8 @@ python tracker/track.py --dataset ${dataset name, related with the yaml file} --
 - BoT-SORT: `python tracker/track.py --dataset uavdt --detector yolox --tracker botsort --kalman_format bot --detector_model_path weights/yolox_m_uavdt_50epochs.pth.tar`
 
 - UCMC Track: `python tracker/track.py --dataset mot17 --detector yolox --tracker ucmctrack --kalman_format ucmc --detector_model_path weights/bytetrack_m_mot17.pth.tar --camera_parameter_folder ./tracker/cam_param_files`
+
+- Hybrid SORT: `python tracker/track.py --dataset mot17 --detector yolox --tracker hybridsort --kalman_format hybridsort --detector_model_path weights/bytetrack_m_mot17.pth.tar --save_images`
 
 >**UCMC Track的重要提示：**
 > 

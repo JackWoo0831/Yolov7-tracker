@@ -29,6 +29,7 @@ from trackers.deepsort_tracker import DeepSortTracker
 from trackers.strongsort_tracker import StrongSortTracker
 from trackers.sparse_tracker import SparseTracker
 from trackers.ucmc_tracker import UCMCTracker
+from trackers.hybridsort_tracker import HybridSortTracker
 
 # YOLOX modules
 try:
@@ -73,6 +74,7 @@ TRACKER_DICT = {
     'strongsort': StrongSortTracker, 
     'sparsetrack': SparseTracker, 
     'ucmctrack': UCMCTracker, 
+    'hybridsort': HybridSortTracker
 }
 
 def get_args():

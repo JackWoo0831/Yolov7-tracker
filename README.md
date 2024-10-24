@@ -19,6 +19,10 @@ git checkout v2  # change to v2 branch !!
 
 </div>
 
+## 🗺️ Latest News
+
+- ***2024.10.24*** Add Hybrid SORT and fix some errors and bugs of OC-SORT.
+
 ## ❤️ Introduction
 
 This repo is a toolbox that implements the **tracking-by-detection paradigm multi-object tracker**. The detector supports:
@@ -38,6 +42,7 @@ and the tracker supports:
 - Strong SORT ([IEEE TMM 2023](https://arxiv.org/pdf/2202.13514))
 - Sparse Track ([arxiv 2306](https://arxiv.org/pdf/2306.05238))
 - UCMC Track ([AAAI 2024](http://arxiv.org/abs/2312.08952))
+- Hybrid SORT([AAAI 2024](https://ojs.aaai.org/index.php/AAAI/article/view/28471))
 
 and the reid model supports:
 
@@ -51,10 +56,6 @@ The highlights are:
 
 ![gif](figure/demo.gif)
 
-## 🗺️ Roadmap
-
-- [ x ] Add UCMC Track
-- [] Add more ReID modules.
 
 ##  🔨 Installation
 
@@ -178,7 +179,7 @@ For example:
 
 - ByteTrack: `python tracker/track.py --dataset uavdt --detector yolov8 --tracker bytetrack --kalman_format byte --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt`
 
-- OCSort: `python tracker/track.py --dataset uavdt --detector yolov8 --tracker ocsort --kalman_format ocsort --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt`
+- OCSort: `python tracker/track.py --dataset mot17 --detector yolox --tracker ocsort --kalman_format ocsort --detector_model_path weights/bytetrack_m_mot17.pth.tar`
 
 - C-BIoU Track: `python tracker/track.py --dataset uavdt --detector yolov8 --tracker c_bioutrack --kalman_format bot --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt`
 
@@ -189,6 +190,8 @@ For example:
 - Sparse Track: `python tracker/track.py --dataset uavdt --detector yolov8 --tracker sparsetrack --kalman_format bot --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt`
 
 - UCMC Track: `python tracker/track.py --dataset mot17 --detector yolox --tracker ucmctrack --kalman_format ucmc --detector_model_path weights/bytetrack_m_mot17.pth.tar --camera_parameter_folder ./tracker/cam_param_files`
+
+- Hybrid SORT: `python tracker/track.py --dataset mot17 --detector yolox --tracker hybridsort --kalman_format hybridsort --detector_model_path weights/bytetrack_m_mot17.pth.tar --save_images`
 
 > **Important notes for UCMC Track:**
 > 

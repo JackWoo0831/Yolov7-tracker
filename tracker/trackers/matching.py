@@ -18,34 +18,9 @@ chi2inv95 = {
     8: 15.507,
     9: 16.919}
 
-
-def merge_matches(m1, m2, shape):
-    O,P,Q = shape
-    m1 = np.asarray(m1)
-    m2 = np.asarray(m2)
-
-    M1 = scipy.sparse.coo_matrix((np.ones(len(m1)), (m1[:, 0], m1[:, 1])), shape=(O, P))
-    M2 = scipy.sparse.coo_matrix((np.ones(len(m2)), (m2[:, 0], m2[:, 1])), shape=(P, Q))
-
-    mask = M1*M2
-    match = mask.nonzero()
-    match = list(zip(match[0], match[1]))
-    unmatched_O = tuple(set(range(O)) - set([i for i, j in match]))
-    unmatched_Q = tuple(set(range(Q)) - set([j for i, j in match]))
-
-    return match, unmatched_O, unmatched_Q
-
-
-def _indices_to_matches(cost_matrix, indices, thresh):
-    matched_cost = cost_matrix[tuple(zip(*indices))]
-    matched_mask = (matched_cost <= thresh)
-
-    matches = indices[matched_mask]
-    unmatched_a = tuple(set(range(cost_matrix.shape[0])) - set(matches[:, 0]))
-    unmatched_b = tuple(set(range(cost_matrix.shape[1])) - set(matches[:, 1]))
-
-    return matches, unmatched_a, unmatched_b
-
+"""
+Some basic functions
+"""
 
 def linear_assignment(cost_matrix, thresh):
     if cost_matrix.size == 0:
@@ -90,7 +65,7 @@ def iou_distance(atracks, btracks):
     :rtype cost_matrix np.ndarray
     """
 
-    if (len(atracks)>0 and isinstance(atracks[0], np.ndarray)) or (len(btracks) > 0 and isinstance(btracks[0], np.ndarray)):
+    if (len(atracks) > 0 and isinstance(atracks[0], np.ndarray)) or (len(btracks) > 0 and isinstance(btracks[0], np.ndarray)):
         atlbrs = atracks
         btlbrs = btracks
     else:
@@ -101,25 +76,6 @@ def iou_distance(atracks, btracks):
 
     return cost_matrix
 
-def v_iou_distance(atracks, btracks):
-    """
-    Compute cost based on IoU
-    :type atracks: list[STrack]
-    :type btracks: list[STrack]
-
-    :rtype cost_matrix np.ndarray
-    """
-
-    if (len(atracks)>0 and isinstance(atracks[0], np.ndarray)) or (len(btracks) > 0 and isinstance(btracks[0], np.ndarray)):
-        atlbrs = atracks
-        btlbrs = btracks
-    else:
-        atlbrs = [track.tlwh_to_tlbr(track.pred_bbox) for track in atracks]
-        btlbrs = [track.tlwh_to_tlbr(track.pred_bbox) for track in btracks]
-    _ious = ious(atlbrs, btlbrs)
-    cost_matrix = 1 - _ious
-
-    return cost_matrix
 
 def embedding_distance(tracks, detections, metric='cosine'):
     """
@@ -168,7 +124,8 @@ def fuse_iou(cost_matrix, tracks, detections):
     return fuse_cost
 
 
-def fuse_score(cost_matrix, detections):
+def fuse_det_score(cost_matrix, detections):
+    # weight detection score into cost matrix
     if cost_matrix.size == 0:
         return cost_matrix
     iou_sim = 1 - cost_matrix
@@ -178,6 +135,22 @@ def fuse_score(cost_matrix, detections):
     fuse_cost = 1 - fuse_sim
     return fuse_cost
 
+
+def fuse_det_trk_score(cost_matrix, detections, tracks):
+    # weight detection and tracklet score into cost matrix
+    if cost_matrix.size == 0:
+        return cost_matrix
+    iou_sim = 1 - cost_matrix
+    
+    det_scores = np.array([det.score for det in detections])
+    det_scores = np.expand_dims(det_scores, axis=0).repeat(cost_matrix.shape[0], axis=0)
+    trk_scores = np.array([trk.score for trk in tracks])
+    trk_scores = np.expand_dims(trk_scores, axis=1).repeat(cost_matrix.shape[1], axis=1)
+    mid_scores = (det_scores + trk_scores) / 2
+    fuse_sim = iou_sim * mid_scores
+    fuse_cost = 1 - fuse_sim
+    
+    return fuse_cost
 
 def greedy_assignment_iou(dist, thresh):
         matched_indices = []
@@ -196,20 +169,6 @@ def greedy_assignment(dists, threshs):
     u_track = [d for d in range(dists.shape[0]) if not (d in matches[:, 0])]
     return matches, u_track,  u_det
 
-def fuse_score_matrix(cost_matrix, detections, tracks):
-    if cost_matrix.size == 0:
-        return cost_matrix
-    iou_sim = 1 - cost_matrix
-    
-    det_scores = np.array([det.score for det in detections])
-    det_scores = np.expand_dims(det_scores, axis=0).repeat(cost_matrix.shape[0], axis=0)
-    trk_scores = np.array([trk.score for trk in tracks])
-    trk_scores = np.expand_dims(trk_scores, axis=1).repeat(cost_matrix.shape[1], axis=1)
-    mid_scores = (det_scores + trk_scores) / 2
-    fuse_sim = iou_sim * mid_scores
-    fuse_cost = 1 - fuse_sim
-    
-    return fuse_cost
 
 """
 calculate buffered IoU, used in C_BIoU_Tracker
@@ -235,7 +194,7 @@ def buffered_iou_distance(atracks, btracks, level=1):
 """
 observation centric association, with velocity, for OC Sort
 """
-def observation_centric_association(tracklets, detections, iou_threshold, velocities, previous_obs, vdc_weight):    
+def observation_centric_association(tracklets, detections, velocities, previous_obs, vdc_weight=0.05, iou_threshold=0.3):    
 
     if(len(tracklets) == 0):
         return np.empty((0, 2), dtype=int), tuple(range(len(tracklets))), tuple(range(len(detections)))
@@ -246,6 +205,10 @@ def observation_centric_association(tracklets, detections, iou_threshold, veloci
     det_scores = np.array([det.score for det in detections])
 
     iou_matrix = bbox_ious(trk_tlbrs, det_tlbrs)
+
+    # NOTE for iou < iou_threshold, directly set to -inf, otherwise after solving the linear assignment, 
+    # some matched pairs will have no overlaps
+    iou_matrix[iou_matrix < iou_threshold] = - 1e5
 
     Y, X = speed_direction_batch(det_tlbrs, previous_obs)
     inertia_Y, inertia_X = velocities[:,0], velocities[:,1]
@@ -265,24 +228,157 @@ def observation_centric_association(tracklets, detections, iou_threshold, veloci
     angle_diff_cost = (valid_mask * diff_angle) * vdc_weight
     angle_diff_cost = angle_diff_cost * scores.T
 
-    matches, unmatched_a, unmatched_b = linear_assignment(- (iou_matrix + angle_diff_cost), thresh=0.9)
+    matches, unmatched_a, unmatched_b = linear_assignment(- (iou_matrix + angle_diff_cost), thresh=0.0)
 
 
     return matches, unmatched_a, unmatched_b
 
 """
-helper func of observation_centric_association
+helper func of observation_centric_association (OC Sort) and association_weak_cues (Hybrid Sort)
 """
-def speed_direction_batch(dets, tracks):
+def speed_direction_batch(dets, tracks, mode='center'):
     tracks = tracks[..., np.newaxis]
-    CX1, CY1 = (dets[:, 0] + dets[:, 2]) / 2.0, (dets[:,1] + dets[:,3]) / 2.0
-    CX2, CY2 = (tracks[:, 0] + tracks[:, 2]) / 2.0, (tracks[:, 1] + tracks[:, 3]) / 2.0
+    if mode == 'center':
+        CX1, CY1 = (dets[:, 0] + dets[:, 2]) / 2.0, (dets[:,1] + dets[:,3]) / 2.0
+        CX2, CY2 = (tracks[:, 0] + tracks[:, 2]) / 2.0, (tracks[:, 1] + tracks[:, 3]) / 2.0
+    elif mode == 'tl':
+        CX1, CY1 = dets[:,0], dets[:,1]
+        CX2, CY2 = tracks[:,0], tracks[:,1]
+    elif mode == 'tr':
+        CX1, CY1 = dets[:,2], dets[:,1]
+        CX2, CY2 = tracks[:,2], tracks[:,1]
+    elif mode == 'bl':
+        CX1, CY1 = dets[:,0], dets[:,3]
+        CX2, CY2 = tracks[:,0], tracks[:,3]
+    else:
+        CX1, CY1 = dets[:,2], dets[:,3]
+        CX2, CY2 = tracks[:,2], tracks[:,3]
+
     dx = CX2 - CX1 
     dy = CY2 - CY1 
     norm = np.sqrt(dx**2 + dy**2) + 1e-6
     dx = dx / norm 
     dy = dy / norm
     return dy, dx  # size: num_track x num_det
+
+"""
+helper func of association_weak_cues (Hybrid Sort)
+"""
+def score_diff_batch(det_scores, track_scores):
+    """
+    Args:
+    det_scores, np.ndarray, shape (N, )
+    track_scores, np.ndarray, shape (M, )
+    """
+    track_scores = track_scores[:, None]
+    det_scores = det_scores[None, :]
+    return np.abs(track_scores - det_scores)
+
+def score_distance(atracks, btracks):
+    """
+    calculate the confidence score difference, c_{i, j} = abs(atracks[i].score - btracks[j].score)
+    """
+    if (len(atracks) > 0 and isinstance(atracks[0], np.ndarray)) or (len(btracks) > 0 and isinstance(btracks[0], np.ndarray)):
+        ascores = atracks
+        bscores = btracks
+    else:
+        ascores = [track.score for track in atracks]
+        bscores = [track.score for track in btracks]
+
+    return score_diff_batch(det_scores=np.ascontiguousarray(bscores), 
+                            track_scores=np.ascontiguousarray(ascores))
+
+"""
+calculate HM IoU, used in Hybrid Sort
+"""
+def hm_iou_distance(atracks, btracks):
+    # hm iou = iou * hright iou
+    if (len(atracks) > 0 and isinstance(atracks[0], np.ndarray)) or (len(btracks) > 0 and isinstance(btracks[0], np.ndarray)):
+        atlbrs = atracks
+        btlbrs = btracks
+    else:
+        atlbrs = [track.tlbr for track in atracks]
+        btlbrs = [track.tlbr for track in btracks]
+
+    _ious = ious(atlbrs, btlbrs)  # original iou
+
+    if _ious.size == 0: 
+        return _ious  # case if len of tracks == 0, no need to further calculating
+
+    if isinstance(atlbrs, list): atlbrs = np.ascontiguousarray(atlbrs)
+    if isinstance(btlbrs, list): btlbrs = np.ascontiguousarray(btlbrs)
+
+    # height iou = (y2_min - y1_max) / (y2_max - y1_min)
+    atlbrs_ = np.expand_dims(atlbrs, axis=1)  # (M, 4) -> (M, 1, 4) to apply boardcast mechanism
+    btlbrs_ = np.expand_dims(btlbrs, axis=0)  # (N, 4) -> (1, N, 4)
+
+    y2_min = np.minimum(atlbrs_[..., 3], btlbrs_[..., 3])  # (M, N)
+    y1_max = np.maximum(atlbrs_[..., 1], btlbrs_[..., 1])
+
+    y2_max = np.maximum(atlbrs_[..., 3], btlbrs_[..., 3])
+    y1_min = np.minimum(atlbrs_[..., 1], btlbrs_[..., 1])
+
+    _h_ious = (y2_min - y1_max) / (y2_max - y1_min)
+
+    return _ious * _h_ious
+
+
+"""
+observation centric association with four corner point velocity, confidence score and HM IoU, for Hybrid Sort
+"""
+def association_weak_cues(tracklets, detections, velocities, previous_obs, 
+                          score_diff_weight=1.0, vdc_weight=0.05, iou_threshold=0.25):    
+
+    if(len(tracklets) == 0):
+        return np.empty((0, 2), dtype=int), tuple(range(len(tracklets))), tuple(range(len(detections)))
+    
+    # get numpy format bboxes
+    trk_tlbrs = np.array([track.tlbr for track in tracklets])
+    det_tlbrs = np.array([det.tlbr for det in detections])
+    det_scores = np.array([det.score for det in detections])
+    # Note that the kalman-predicted score is used in first round assocication
+    trk_scores = np.array([trk.kalman_score for trk in tracklets])   
+
+    # hm iou
+    iou_matrix = hm_iou_distance(trk_tlbrs, det_tlbrs)
+
+    # NOTE for iou < iou_threshold, directly set to -inf, otherwise after solving the linear assignment, 
+    # some matched pairs will have no overlaps
+    iou_matrix[iou_matrix < iou_threshold] = - 1e5
+
+    # cal four corner distance
+    velocity_cost = np.zeros((len(tracklets), len(detections)))
+    for idx, corner in enumerate(['tl', 'tr', 'bl', 'br']):  # tl, tr, bl, br
+        # get the velocity directoin between detections and historical observations
+        Y, X = speed_direction_batch(det_tlbrs, previous_obs, mode=corner)   # shape (num track, num det)
+        inertia_Y, inertia_X = velocities[:, idx, 0], velocities[:, idx, 1]  # velocities: shape (N, 4, 2)
+        inertia_Y = np.repeat(inertia_Y[:, np.newaxis], Y.shape[1], axis=1)
+        inertia_X = np.repeat(inertia_X[:, np.newaxis], X.shape[1], axis=1)
+
+        diff_angle_cos = inertia_X * X + inertia_Y * Y
+        diff_angle_cos = np.clip(diff_angle_cos, a_min=-1, a_max=1)
+        diff_angle = np.arccos(diff_angle_cos)
+        diff_angle = (np.pi / 2.0 - np.abs(diff_angle)) / np.pi          
+
+        valid_mask = np.ones(previous_obs.shape[0])
+        valid_mask[np.where(previous_obs[:, 4] < 0)] = 0
+
+        scores = np.repeat(det_scores[:, np.newaxis], trk_tlbrs.shape[0], axis=1)
+        valid_mask = np.repeat(valid_mask[:, np.newaxis], X.shape[1], axis=1)
+
+        angle_diff_cost = (valid_mask * diff_angle) * vdc_weight
+        angle_diff_cost = angle_diff_cost * scores.T
+
+        # add all angle diff cost from four corners
+        velocity_cost += angle_diff_cost
+
+    # minus the score difference
+    velocity_cost -= score_diff_batch(det_scores, trk_scores) * score_diff_weight
+
+    matches, unmatched_a, unmatched_b = linear_assignment(- (iou_matrix + velocity_cost), thresh=0.0)
+
+    return matches, unmatched_a, unmatched_b
+
 
 
 def matching_cascade(
