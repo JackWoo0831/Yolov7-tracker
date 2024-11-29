@@ -15,6 +15,7 @@ git checkout v2  # change to v2 branch !!
 
 ## 🗺️ 最近更新
 
+- ***2024.11.29*** 修复了C-BIoU Tracker中轨迹状态的更新和预测的错误
 - ***2024.10.24*** 增加了 Hybrid SORT 并且修复了OC-SORT的一些bug和错误。
 
 

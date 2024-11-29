@@ -39,18 +39,11 @@ class C_BIoUTracker(object):
         categories = output_results[:, -1]
 
         remain_inds = scores > self.args.conf_thresh
-        inds_low = scores > 0.1
-        inds_high = scores < self.args.conf_thresh
-
-        inds_second = np.logical_and(inds_low, inds_high)
-        dets_second = bboxes[inds_second]
         dets = bboxes[remain_inds]
 
         cates = categories[remain_inds]
-        cates_second = categories[inds_second]
         
         scores_keep = scores[remain_inds]
-        scores_second = scores[inds_second]
 
         if len(dets) > 0:
             '''Detections'''
@@ -68,7 +61,7 @@ class C_BIoUTracker(object):
             else:
                 tracked_tracklets.append(track)
 
-        ''' Step 2: First association, with high score detection boxes'''
+        ''' Step 2: First association, with small buffer IoU'''
         tracklet_pool = joint_tracklets(tracked_tracklets, self.lost_tracklets)
 
         # Predict the current location with Kalman
@@ -89,23 +82,18 @@ class C_BIoUTracker(object):
                 track.re_activate(det, self.frame_id, new_id=False)
                 refind_tracklets.append(track)
 
-        ''' Step 3: Second association, with low score detection boxes'''
-        # association the untrack to the low score detections
-        if len(dets_second) > 0:
-            '''Detections'''
-            detections_second = [Tracklet_w_bbox_buffer(tlwh, s, cate, motion=self.motion) for
-                          (tlwh, s, cate) in zip(dets_second, scores_second, cates_second)]
-        else:
-            detections_second = []
-        r_tracked_tracklets = [tracklet_pool[i] for i in u_track if tracklet_pool[i].state == TrackState.Tracked]
+        unmatched_tracklets = [tracklet_pool[i] for i in u_track if tracklet_pool[i].state == TrackState.Tracked]
+        unmatched_detections = [detections[i] for i in u_detection]
 
+        '''Step 3: Second association, with large buffer IoU'''
 
-        dists = buffered_iou_distance(r_tracked_tracklets, detections_second, level=2)
+        dists = buffered_iou_distance(unmatched_tracklets, unmatched_detections, level=2)
 
-        matches, u_track, u_detection_second = linear_assignment(dists, thresh=0.5)
+        matches, u_track, u_detection = linear_assignment(dists, thresh=0.5)
+
         for itracked, idet in matches:
-            track = r_tracked_tracklets[itracked]
-            det = detections_second[idet]
+            track = unmatched_tracklets[itracked]
+            det = unmatched_detections[idet]
             if track.state == TrackState.Tracked:
                 track.update(det, self.frame_id)
                 activated_tracklets.append(track)
@@ -113,16 +101,10 @@ class C_BIoUTracker(object):
                 track.re_activate(det, self.frame_id, new_id=False)
                 refind_tracklets.append(track)
 
-        for it in u_track:
-            track = r_tracked_tracklets[it]
-            if not track.state == TrackState.Lost:
-                track.mark_lost()
-                lost_tracklets.append(track)
-
         '''Deal with unconfirmed tracks, usually tracks with only one beginning frame'''
-        detections = [detections[i] for i in u_detection]
+        detections = [unmatched_detections[i] for i in u_detection]
         dists = buffered_iou_distance(unconfirmed, detections, level=1)
-       
+
         matches, u_unconfirmed, u_detection = linear_assignment(dists, thresh=0.7)
 
         for itracked, idet in matches:
@@ -133,7 +115,7 @@ class C_BIoUTracker(object):
             track.mark_removed()
             removed_tracklets.append(track)
 
-        """ Step 4: Init new tracklets"""
+        '''Step 4. Inital new tracks'''
         for inew in u_detection:
             track = detections[inew]
             if track.score < self.det_thresh:
@@ -141,7 +123,7 @@ class C_BIoUTracker(object):
             track.activate(self.frame_id)
             activated_tracklets.append(track)
 
-        """ Step 5: Update state"""
+        ''' Step 5: Update state'''
         for track in self.lost_tracklets:
             if self.frame_id - track.end_frame > self.max_time_lost:
                 track.mark_removed()

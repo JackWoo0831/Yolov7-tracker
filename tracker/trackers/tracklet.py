@@ -438,7 +438,14 @@ class Tracklet_w_bbox_buffer(Tracklet):
     Tracklet class with buffer of bbox, for C_BIoU track.
     """
     def __init__(self, tlwh, score, category, motion='byte'):
-        super().__init__(tlwh, score, category, motion)
+        # initial position
+        self._tlwh = np.asarray(tlwh, dtype=np.float)
+        self.is_activated = False
+
+        self.score = score
+        self.category = category
+
+        # Note in C-BIoU tracker the kalman filter is abandoned
 
         # params in motion state
         self.b1, self.b2, self.n = 0.3, 0.5, 5
@@ -448,6 +455,7 @@ class Tracklet_w_bbox_buffer(Tracklet):
         self.buffer_bbox1 = self.get_buffer_bbox(level=1)
         self.buffer_bbox2 = self.get_buffer_bbox(level=2)
         # motion state, s^{t + \delta} = o^t + (\delta / n) * \sum_{i=t-n+1}^t(o^i - o^{i-1}) = o^t + (\delta / n) * (o^t - o^{t - n})
+        self.motion_state0 = self._tlwh  # original tlwh
         self.motion_state1 = self.buffer_bbox1.copy()
         self.motion_state2 = self.buffer_bbox2.copy()
 
@@ -483,14 +491,30 @@ class Tracklet_w_bbox_buffer(Tracklet):
         # update stored bbox
         if (len(self.origin_bbox_buffer) > self.n):
             self.origin_bbox_buffer.popleft()
-            self.origin_bbox_buffer.append(self._tlwh)
-        else:
-            self.origin_bbox_buffer.append(self._tlwh)
+
+        self.origin_bbox_buffer.append(self._tlwh)
 
         self.buffer_bbox1 = self.get_buffer_bbox(level=1)
         self.buffer_bbox2 = self.get_buffer_bbox(level=2)
+
+        self.motion_state0 = self._tlwh
         self.motion_state1 = self.buffer_bbox1.copy()
         self.motion_state2 = self.buffer_bbox2.copy()
+
+    def predict(self):
+        # Note that in C-BIoU Tracker, no need to use Kalman Filter
+        self.time_since_update += 1
+
+        # Average motion model: s^{t + \delta} = o^t + (\delta / n) * (o^t - o^{t - n})
+        assert len(self.origin_bbox_buffer), 'The bbox buffer is empty'
+
+        motion_state = self.origin_bbox_buffer[-1] + \
+                    (self.time_since_update / len(self.origin_bbox_buffer)) * (self.origin_bbox_buffer[-1] - self.origin_bbox_buffer[0])
+        
+        self.motion_state0 = motion_state
+        self.motion_state1 = self.get_buffer_bbox(level=1, bbox=motion_state)
+        self.motion_state2 = self.get_buffer_bbox(level=2, bbox=motion_state)
+
 
     def update(self, new_track, frame_id):
         self.frame_id = frame_id
@@ -498,7 +522,7 @@ class Tracklet_w_bbox_buffer(Tracklet):
         new_tlwh = new_track.tlwh
         self.score = new_track.score
 
-        self.kalman_filter.update(self.convert_func(new_tlwh))
+        # self.kalman_filter.update(self.convert_func(new_tlwh))  # no need to use Kalman Filter
 
         self.state = TrackState.Tracked
         self.is_activated = True
@@ -508,25 +532,15 @@ class Tracklet_w_bbox_buffer(Tracklet):
         # update stored bbox
         if (len(self.origin_bbox_buffer) > self.n):
             self.origin_bbox_buffer.popleft()
-            self.origin_bbox_buffer.append(new_tlwh)
-        else:
-            self.origin_bbox_buffer.append(new_tlwh)
+        self.origin_bbox_buffer.append(new_tlwh)
 
-        # update motion state
-        if self.time_since_update:  # have some unmatched frames
-            if len(self.origin_bbox_buffer) < self.n:
-                self.motion_state1 = self.get_buffer_bbox(level=1, bbox=new_tlwh)
-                self.motion_state2 = self.get_buffer_bbox(level=2, bbox=new_tlwh)
-            else:  # s^{t + \delta} = o^t + (\delta / n) * (o^t - o^{t - n})
-                motion_state = self.origin_bbox_buffer[-1] + \
-                    (self.time_since_update / self.n) * (self.origin_bbox_buffer[-1] - self.origin_bbox_buffer[0])
-                self.motion_state1 = self.get_buffer_bbox(level=1, bbox=motion_state)
-                self.motion_state2 = self.get_buffer_bbox(level=2, bbox=motion_state)
-
-        else:  # no unmatched frames, use current detection as motion state
-            self.motion_state1 = self.get_buffer_bbox(level=1, bbox=new_tlwh)
-            self.motion_state2 = self.get_buffer_bbox(level=2, bbox=new_tlwh)
-
+    # Drop kalman filter, rewrite the tlwh function
+    @property
+    def tlwh(self):
+        """Get current position in bounding box format `(top left x, top left y,
+                width, height)`.
+        """
+        return self.motion_state0
 
 class Tracklet_w_depth(Tracklet):
     """

@@ -21,6 +21,7 @@ git checkout v2  # change to v2 branch !!
 
 ## 🗺️ Latest News
 
+- ***2024.11.29*** Fix bugs of C-BIoU Track (the state prediction and updating bugs)
 - ***2024.10.24*** Add Hybrid SORT and fix some errors and bugs of OC-SORT.
 
 ## ❤️ Introduction
