@@ -34,7 +34,7 @@ class HybridSortTracker(object):
         for i in range(k):
             dt = k - i
             if cur_age - dt in observations:
-                return observations[cur_age-dt]
+                return observations[cur_age - dt]
         max_age = max(observations.keys())
         return observations[max_age]
 
@@ -128,7 +128,7 @@ class HybridSortTracker(object):
 
         dists = hm_iou_distance(r_tracked_tracklets, detections_second) - score_distance(r_tracked_tracklets, detections_second)
 
-        matches, u_track, u_detection_second = linear_assignment(dists, thresh=0.5)
+        matches, u_track, u_detection_second = linear_assignment(-1 * dists, thresh=0.0)
         for itracked, idet in matches:
             track = r_tracked_tracklets[itracked]
             det = detections_second[idet]
@@ -147,7 +147,7 @@ class HybridSortTracker(object):
         dists = hm_iou_distance(atracks=[t.last_observation[: 4] for t in r_tracked_tracklets],  # parse bbox directly
                           btracks=[d.tlbr for d in r_detections])
 
-        matches, u_track, u_detection = linear_assignment(dists, thresh=0.5)
+        matches, u_track, u_detection = linear_assignment(-1 * dists, thresh=0.0)
 
         for itracked, idet in matches:
             track = r_tracked_tracklets[itracked]

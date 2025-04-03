@@ -34,7 +34,7 @@ class OCSortTracker(object):
         for i in range(k):
             dt = k - i
             if cur_age - dt in observations:
-                return observations[cur_age-dt]
+                return observations[cur_age - dt]
         max_age = max(observations.keys())
         return observations[max_age]
 

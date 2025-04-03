@@ -196,7 +196,7 @@ observation centric association, with velocity, for OC Sort
 """
 def observation_centric_association(tracklets, detections, velocities, previous_obs, vdc_weight=0.05, iou_threshold=0.3):    
 
-    if(len(tracklets) == 0):
+    if len(tracklets) == 0 or len(detections) == 0:
         return np.empty((0, 2), dtype=int), tuple(range(len(tracklets))), tuple(range(len(detections)))
     
     # get numpy format bboxes
@@ -237,7 +237,12 @@ def observation_centric_association(tracklets, detections, velocities, previous_
 helper func of observation_centric_association (OC Sort) and association_weak_cues (Hybrid Sort)
 """
 def speed_direction_batch(dets, tracks, mode='center'):
+    # check the dim of dets
+    if len(dets.shape) == 1:
+        dets = dets[np.newaxis, ...]
+
     tracks = tracks[..., np.newaxis]
+    
     if mode == 'center':
         CX1, CY1 = (dets[:, 0] + dets[:, 2]) / 2.0, (dets[:,1] + dets[:,3]) / 2.0
         CX2, CY2 = (tracks[:, 0] + tracks[:, 2]) / 2.0, (tracks[:, 1] + tracks[:, 3]) / 2.0
@@ -329,7 +334,7 @@ observation centric association with four corner point velocity, confidence scor
 def association_weak_cues(tracklets, detections, velocities, previous_obs, 
                           score_diff_weight=1.0, vdc_weight=0.05, iou_threshold=0.25):    
 
-    if(len(tracklets) == 0):
+    if len(tracklets) == 0 or len(detections) == 0:
         return np.empty((0, 2), dtype=int), tuple(range(len(tracklets))), tuple(range(len(detections)))
     
     # get numpy format bboxes

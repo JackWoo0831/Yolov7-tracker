@@ -44,8 +44,8 @@ class TestDataset(Dataset):
             return self._getitem_yolox(idx)
         elif self.model == 'yolov7':
             return self._getitem_yolov7(idx)
-        elif self.model == 'yolov8':
-            return self._getitem_yolov8(idx)
+        else:
+            return self._getitem_yolo_ultralytics(idx)
     
     def _getitem_yolox(self, idx):
 
@@ -67,7 +67,7 @@ class TestDataset(Dataset):
 
         return torch.from_numpy(img), img_resized
     
-    def _getitem_yolov8(self, idx):
+    def _getitem_yolo_ultralytics(self, idx):
 
         img = cv2.imread(osp.join(self.seq_path, self.imgs_in_seq[idx]))  # (h, w, c)
         # img = self._preprocess_yolov8(img)
@@ -196,8 +196,8 @@ class DemoDataset(TestDataset):
             return self._getitem_yolox(img)
         elif self.model == 'yolov7':
             return self._getitem_yolov7(img)
-        elif self.model == 'yolov8':
-            return self._getitem_yolov8(img)
+        else:
+            return self._getitem_yolo_ultralytics(img)
 
     def _getitem_yolox(self, img):
 
@@ -216,7 +216,7 @@ class DemoDataset(TestDataset):
 
         return torch.from_numpy(img), img_resized
     
-    def _getitem_yolov8(self, img):
+    def _getitem_yolo_ultralytics(self, img):
 
         # img = self._preprocess_yolov8(img)
 

@@ -21,7 +21,7 @@ def main(args):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser("YOLO v8 train parser")
+    parser = argparse.ArgumentParser("YOLO train parser")
     
     parser.add_argument('--model', type=str, default='yolov8s.yaml', help='yaml or pt file')
     parser.add_argument('--model_weight', type=str, default='yolov8s.pt', help='')
@@ -34,3 +34,5 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     main(args)
+
+# python tracker/yolo_ultralytics_utils/train_yolo_ultralytics.py --model_weight weights/yolo11m.pt --data_cfg tracker/yolo_ultralytics_utils/data_cfgs/visdrone_det.yaml --epochs 30 --batch_size 8 --img_sz 1280 --device 0

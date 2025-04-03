@@ -399,10 +399,10 @@ class Tracklet_w_velocity_four_corner(Tracklet):
         if self.velocity_bl is None:
             return np.zeros((4, 2))
         
-        return np.vstack([self.velocity_bl, 
-                          self.velocity_br, 
-                          self.velocity_tl, 
-                          self.velocity_tr])
+        return np.vstack([self.velocity_tl, 
+                          self.velocity_tr,
+                          self.velocity_bl, 
+                          self.velocity_br, ])
 
     @property
     def kalman_score(self, ):

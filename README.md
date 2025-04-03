@@ -21,8 +21,7 @@ git checkout v2  # change to v2 branch !!
 
 ## 🗺️ Latest News
 
-- ***2024.11.29*** Fix bugs of C-BIoU Track (the state prediction and updating bugs)
-- ***2024.10.24*** Add Hybrid SORT and fix some errors and bugs of OC-SORT.
+- ***2025.4.3*** Support the newest ultralytics version (YOLO v3 ~ v12) and fix some bugs of hybrid sort.
 
 ## ❤️ Introduction
 
@@ -30,7 +29,7 @@ This repo is a toolbox that implements the **tracking-by-detection paradigm mult
 
 - YOLOX 
 - YOLO v7
-- YOLO v8, 
+- YOLO v3 ~ v12 by [ultralytics](https://docs.ultralytics.com/), 
 
 and the tracker supports:
 
@@ -61,7 +60,7 @@ The highlights are:
 ##  🔨 Installation
 
 The basic env is:
-- Ubuntu 18.04
+- Ubuntu 20.04
 - Python：3.9, Pytorch: 1.12
 
 Run following commond to install other packages:
@@ -86,12 +85,14 @@ python3 setup.py develop
 
 There is no need to execute addtional steps as the repo itself is based on YOLOv7.
 
-3. YOLO v8:
+3. YOLO series by ultralytics:
 
 Please run:
 
 ```bash
-pip3 install ultralytics==8.0.94
+pip3 install ultralytics
+or 
+pip3 install --upgrade ultralytics
 ```
 
 ### 📑 Data preparation
@@ -148,7 +149,11 @@ Some references may help you:
 python train_aux.py --dataset visdrone --workers 8 --device <$GPU_id$> --batch-size 16 --data data/visdrone_all.yaml --img 1280 1280 --cfg cfg/training/yolov7-w6.yaml --weights <$YOLO v7 pretrained model path$> --name yolov7-w6-custom --hyp data/hyp.scratch.custom.yaml
 ```  
 
-- YOLO v8: `tracker/yolov8_utils/train_yolov8.py`
+- YOLO series (YOLO v3 ~ v12) by ultralytics:: `tracker/yolo_ultralytics_utils/train_yolo_ultralytics.py`
+
+```shell
+python tracker/yolo_ultralytics_utils/train_yolo_ultralytics.py --model_weight weights/yolo11m.pt --data_cfg tracker/yolo_ultralytics_utils/data_cfgs/visdrone_det.yaml --epochs 30 --batch_size 8 --img_sz 1280 --device 0
+```
 
 
 
@@ -157,42 +162,47 @@ python train_aux.py --dataset visdrone --workers 8 --device <$GPU_id$> --batch-s
 If you only want to run a demo:
 
 ```bash
-python tracker/track_demo.py --obj ${video path or images folder path} --detector ${yolox, yolov8 or yolov7} --tracker ${tracker name} --kalman_format ${kalman format, sort, byte, ...} --detector_model_path ${detector weight path} --save_images
+python tracker/track_demo.py --obj ${video path or images folder path} --detector ${yolox, yolov7 or yolo_ultra} --tracker ${tracker name} --kalman_format ${kalman format, sort, byte, ...} --detector_model_path ${detector weight path} --save_images
 ```
+
+> ❗❗Important Notes
+> 
+> If you want to use the detector trained by **ultralytics**, the `--detector` argument **must include** the substring `ultra`, such as 
+> `--detector yolo_ultra`, `--detector yolo_ultra_v8`, `--detector yolov11_ultra`, `--detector yolo12_ultralytics`, etc.
 
 For example:
 
 ```bash
-python tracker/track_demo.py --obj M0203.mp4 --detector yolov8 --tracker deepsort --kalman_format byte --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt --save_images
+python tracker/track_demo.py --obj M0203.mp4 --detector yolo_ultra_v8 --tracker deepsort --kalman_format byte --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt --save_images
 ```
 
 If you want to run trackers on dataset:
 
 ```bash
-python tracker/track.py --dataset ${dataset name, related with the yaml file} --detector ${yolox, yolov8 or yolov7} --tracker ${tracker name} --kalman_format ${kalman format, sort, byte, ...} --detector_model_path ${detector weight path}
+python tracker/track.py --dataset ${dataset name, related with the yaml file} --detector ${yolox, yolo_ultra_v8 or yolov7} --tracker ${tracker name} --kalman_format ${kalman format, sort, byte, ...} --detector_model_path ${detector weight path}
 ```
 
 For example:
 
-- SORT: `python tracker/track.py --dataset uavdt --detector yolov8 --tracker sort --kalman_format sort --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt `
+- SORT: `python tracker/track.py --dataset uavdt --detector yolo_ultra_v8 --tracker sort --kalman_format sort --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt `
 
-- DeepSORT: `python tracker/track.py --dataset uavdt --detector yolov7 --tracker deepsort --kalman_format byte --detector_model_path weights/yolov7_UAVDT_35epochs_20230507.pt`
+- DeepSORT: `python tracker/track.py --dataset visdrone_part --detector yolov7 --tracker deepsort --kalman_format byte --detector_model_path weights/yolov8l_VisDroneDet_35epochs_20230605.pt`
 
-- ByteTrack: `python tracker/track.py --dataset uavdt --detector yolov8 --tracker bytetrack --kalman_format byte --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt`
+- ByteTrack: `python tracker/track.py --dataset uavdt --detector yolo_ultra_v8 --tracker bytetrack --kalman_format byte --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt`
 
 - OCSort: `python tracker/track.py --dataset mot17 --detector yolox --tracker ocsort --kalman_format ocsort --detector_model_path weights/bytetrack_m_mot17.pth.tar`
 
-- C-BIoU Track: `python tracker/track.py --dataset uavdt --detector yolov8 --tracker c_bioutrack --kalman_format bot --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt`
+- C-BIoU Track: `python tracker/track.py --dataset uavdt --detector yolo_ultra_v8 --tracker c_bioutrack --kalman_format bot --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt`
 
 - BoT-SORT: `python tracker/track.py --dataset uavdt --detector yolox --tracker botsort --kalman_format bot --detector_model_path weights/yolox_m_uavdt_50epochs.pth.tar`
 
-- Strong SORT: `python tracker/track.py --dataset uavdt --detector yolov8 --tracker strongsort --kalman_format strongsort --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt`
+- Strong SORT: `python tracker/track.py --dataset visdrone_part --detector yolo_ultra_v8 --tracker strongsort --kalman_format strongsort --detector_model_path weights/yolov8l_VisDrone_35epochs_20230509.pt`
 
-- Sparse Track: `python tracker/track.py --dataset uavdt --detector yolov8 --tracker sparsetrack --kalman_format bot --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt`
+- Sparse Track: `python tracker/track.py --dataset uavdt --detector yolo_ultra_v11 --tracker sparsetrack --kalman_format bot --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt`
 
 - UCMC Track: `python tracker/track.py --dataset mot17 --detector yolox --tracker ucmctrack --kalman_format ucmc --detector_model_path weights/bytetrack_m_mot17.pth.tar --camera_parameter_folder ./tracker/cam_param_files`
 
-- Hybrid SORT: `python tracker/track.py --dataset mot17 --detector yolox --tracker hybridsort --kalman_format hybridsort --detector_model_path weights/bytetrack_m_mot17.pth.tar --save_images`
+- Hybrid SORT: `python tracker/track.py --dataset visdrone_part --detector yolo_ultra --tracker hybridsort --kalman_format hybridsort --detector_model_path weights/yolov8l_VisDrone_35epochs_20230509.pt --save_images`
 
 > **Important notes for UCMC Track:**
 > 

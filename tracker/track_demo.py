@@ -53,10 +53,10 @@ except Exception as e:
     logger.warning('Load yolov7 fail. If you want to use yolov7, please check the installation.')
     pass
 
-# YOLOv8 modules
+# Ultralytics YOLO modules (support YOLOv3 ~ YOLOv12)
 try:
     from ultralytics import YOLO
-    from yolov8_utils.postprocess import postprocess as postprocess_yolov8
+    from yolo_ultralytics_utils.postprocess import postprocess as postprocess_ultralytics
 
 except Exception as e:
     logger.warning(e)
@@ -83,7 +83,7 @@ def get_args():
     """general"""
     parser.add_argument('--obj', type=str, required=True, default='demo.mp4', help='video or images folder PATH')
 
-    parser.add_argument('--detector', type=str, default='yolov8', help='yolov7, yolox, etc.')
+    parser.add_argument('--detector', type=str, default='yolo_ultralytics_v8', help='yolov7, yolox, etc.')
     parser.add_argument('--tracker', type=str, default='sort', help='sort, deepsort, etc')
     parser.add_argument('--reid_model', type=str, default='osnet_x0_25', help='osnet or deppsort')
 
@@ -168,7 +168,7 @@ def main(args):
 
         logger.info(f'Now detector is on device {next(model.parameters()).device}')
 
-    elif args.detector == 'yolov8':
+    elif 'ultra' in args.detector:
 
         logger.info(f"loading detector {args.detector} checkpoint {args.detector_model_path}")
         model = YOLO(args.detector_model_path)
@@ -180,6 +180,9 @@ def main(args):
 
     else:
         logger.error(f"detector {args.detector} is not supprted")
+        logger.error("If you want to use the yolo v8 by ultralytics, please specify the `--detector` \
+                as the string including the substring `ultra`, \
+                such as `yolo_ultra_v8` or `yolo11_ultralytics`")
         exit(0)
 
     """3. load sequences"""
@@ -200,7 +203,7 @@ def main(args):
     """4. Tracking"""
 
     for frame_idx, (ori_img, img) in process_bar:
-        if args.detector == 'yolov8':
+        if 'ultra' in args.detector:
             img = img.squeeze(0).cpu().numpy()
 
         else:
@@ -211,7 +214,7 @@ def main(args):
 
         # get detector output 
         with torch.no_grad():
-            if args.detector == 'yolov8':
+            if 'ultra' in args.detector:
                 output = model.predict(img, conf=args.conf_thresh, iou=args.nms_thresh)
             else:
                 output = model(img)
@@ -224,8 +227,8 @@ def main(args):
         elif args.detector == 'yolov7':
             output = postprocess_yolov7(output, args.conf_thresh, args.nms_thresh, img.shape[2:], ori_img.shape)
 
-        elif args.detector == 'yolov8':
-            output = postprocess_yolov8(output)
+        elif 'ultra' in args.detector:
+            output = postprocess_ultralytics(output)
         
         else: raise NotImplementedError
 

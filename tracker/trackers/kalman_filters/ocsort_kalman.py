@@ -132,6 +132,8 @@ class OCSORTKalman(BaseKalman):
             
             self.kf.update(z)
 
+            return 
+
         else:
             if not self.observed:  # Get observation, use online smoothing to re-update parameters
                 self._unfreeze()
