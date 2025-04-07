@@ -15,6 +15,7 @@ git checkout v2  # change to v2 branch !!
 
 ## 🗺️ 最近更新
 
+- ***2025.4.7*** 增加更多Re-ID模型 (ShuffleNet, VehicleNet, MobileNet), 修复一些bug (例如在轨迹为非活动状态时停止更新边界框长宽), 增加一些小功能 (例如可以修改两阶段关联策略的最低阈值，原来是固定的0.1; 增加将IoU和检测置信度融合的选项)
 - ***2025.4.3*** 增加了ultralytics库最新版本的支持，修复了hybrid sort中的一些bug.
 
 
@@ -30,9 +31,10 @@ git checkout v2  # change to v2 branch !!
 
 - SORT
 - DeepSORT 
-- ByteTrack ([ECCV2022](https://arxiv.org/pdf/2110.06864))
-- Bot-SORT ([arxiv2206](https://arxiv.org/pdf/2206.14651.pdf))
+- ByteTrack ([ECCV2022](https://arxiv.org/pdf/2110.06864)) 以及 ByetTrack-ReID
+- Bot-SORT ([arxiv2206](https://arxiv.org/pdf/2206.14651.pdf)) 以及 Bot-SORT-ReID
 - OCSORT ([CVPR2023](https://openaccess.thecvf.com/content/CVPR2023/papers/Cao_Observation-Centric_SORT_Rethinking_SORT_for_Robust_Multi-Object_Tracking_CVPR_2023_paper.pdf))
+- DeepOCSORT ([ICIP2023](https://arxiv.org/abs/2302.11813))
 - C_BIoU Track ([arxiv2211](https://arxiv.org/pdf/2211.14317v2.pdf))
 - Strong SORT ([IEEE TMM 2023](https://arxiv.org/pdf/2202.13514))
 - Sparse Track ([arxiv 2306](https://arxiv.org/pdf/2306.05238))
@@ -41,8 +43,17 @@ git checkout v2  # change to v2 branch !!
 
 REID模型支持：
 
+行人重识别模型:
 - OSNet
-- DeepSORT中的
+- Extractor from DeepSort
+- ShuffleNet
+- MobileNet
+
+车辆重识别模型:
+
+- VehicleNet ([AICIty-reID-2020](https://github.com/layumi/AICIty-reID-2020))
+
+> **部分重识别模型的权重**: [百度网盘](https://pan.baidu.com/s/1QbVoBz4mPpf4Qsqq1PYXkQ) 提取码: c655
 
 亮点包括:
 - 支持的跟踪器比MMTracking多
@@ -51,10 +62,6 @@ REID模型支持：
 
 ![gif](figure/demo.gif)
 
-## 🗺️ 路线图
-
-- [ x ] Add UCMC Track
-- [] Add more ReID modules.
 
 ##  🔨 安装
 
@@ -154,11 +161,11 @@ python train_aux.py --dataset visdrone --workers 8 --device <$GPU_id$> --batch-s
 python tracker/yolo_ultralytics_utils/train_yolo_ultralytics.py --model_weight weights/yolo11m.pt --data_cfg tracker/yolo_ultralytics_utils/data_cfgs/visdrone_det.yaml --epochs 30 --batch_size 8 --img_sz 1280 --device 0
 ```
 
-
+> 关于重识别模型的训练, 请先参照对应模型的原论文或代码. 行人重识别模型例如 ShuffleNet, OSNet 参考 [torchreid](https://github.com/KaiyangZhou/deep-person-reid), 车辆重识别模型参考 [AICIty-reID-2020](https://github.com/layumi/AICIty-reID-2020).
 
 ### 😊 跟踪！
 
-如果你只是想运行一个demo:
+**如果你只是想运行一个demo**:
 
 ```bash
 python tracker/track_demo.py --obj ${video path or images folder path} --detector ${yolox, yolov7 or yolo_ultra} --tracker ${tracker name} --kalman_format ${kalman format, sort, byte, ...} --detector_model_path ${detector weight path} --save_images
@@ -175,13 +182,27 @@ python tracker/track_demo.py --obj ${video path or images folder path} --detecto
 python tracker/track_demo.py --obj M0203.mp4 --detector yolov8 --tracker deepsort --kalman_format byte --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt --save_images
 ```
 
-如果你想在数据集上测试:
+**如果你想在数据集上测试**:
 
 ```bash
 python tracker/track.py --dataset ${dataset name, related with the yaml file} --detector ${yolox, yolo_ultra_v8 or yolov7} --tracker ${tracker name} --kalman_format ${kalman format, sort, byte, ...} --detector_model_path ${detector weight path}
 ```
 
-例如:
+此外, 还可以指定
+
+`--reid`: 启用reid模型(目前对ByteTrack, BoT-SORT, OCSORT有用)
+
+`--reid_model`: 采用那种模型: 参照`tracker/trackers/reid_models/engine.py`中的`REID_MODEL_DICT`选取
+
+`--reid_model_path`: 加载的重识别模型权重路径
+
+`--conf_thresh_low`: 对于两阶段关联模型(ByteTrack, BoT-SORT等), 最低置信度阈值(默认0.1)
+
+`--fuse_detection_score`: 如果加上, 就融合IoU的值和检测置信度的值, 例如BoT-SORT的源码是这样做的
+
+`--save_images`: 保存结果图片
+
+***各种跟踪算法运行示例***:
 
 - SORT: `python tracker/track.py --dataset uavdt --detector yolo_ultra_v8 --tracker sort --kalman_format sort --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt `
 
@@ -189,11 +210,17 @@ python tracker/track.py --dataset ${dataset name, related with the yaml file} --
 
 - ByteTrack: `python tracker/track.py --dataset uavdt --detector yolo_ultra_v8 --tracker bytetrack --kalman_format byte --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt`
 
+- ByteTrack-ReID: `python tracker/track.py --dataset uavdt --detector yolo_ultra_v8 --tracker bytetrack --kalman_format byte --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt --reid --reid_model osnet_x0_25 --reid_model_path weights/osnet_x0_25.pth`
+
 - OCSort: `python tracker/track.py --dataset mot17 --detector yolox --tracker ocsort --kalman_format ocsort --detector_model_path weights/bytetrack_m_mot17.pth.tar`
+
+- DeepOCSORT: `python tracker/track.py --dataset mot17 --detector yolox --tracker ocsort --kalman_format ocsort --detector_model_path weights/bytetrack_m_mot17.pth.tar --reid --reid_model shufflenet_v2_x1_0 --reid_model_path shufflenetv2_x1-5666bf0f80.pth`
 
 - C-BIoU Track: `python tracker/track.py --dataset uavdt --detector yolo_ultra_v8 --tracker c_bioutrack --kalman_format bot --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt`
 
 - BoT-SORT: `python tracker/track.py --dataset uavdt --detector yolox --tracker botsort --kalman_format bot --detector_model_path weights/yolox_m_uavdt_50epochs.pth.tar`
+
+- BoT-SORT-ReID: `python tracker/track.py --dataset uavdt --detector yolox --tracker botsort --kalman_format bot --detector_model_path weights/yolox_m_uavdt_50epochs.pth.tar --reid --reid_model vehiclenet --reid_model_path vehicle_net_resnet50.pth`
 
 - Strong SORT: `python tracker/track.py --dataset visdrone_part --detector yolo_ultra_v8 --tracker strongsort --kalman_format strongsort --detector_model_path weights/yolov8l_VisDroneDet_35epochs_20230605.pt`
 

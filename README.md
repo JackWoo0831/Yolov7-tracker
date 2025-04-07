@@ -21,6 +21,7 @@ git checkout v2  # change to v2 branch !!
 
 ## 🗺️ Latest News
 
+- ***2025.4.7*** Add more Re-ID modules (ShuffleNet, VehicleNet, MobileNet), fix some bugs (such as abandon bbox aspect ratio updating if the tracklet is not activated), and add some functions (customized low filter threshold, fuse detection score, etc.)
 - ***2025.4.3*** Support the newest ultralytics version (YOLO v3 ~ v12) and fix some bugs of hybrid sort.
 
 ## ❤️ Introduction
@@ -35,9 +36,10 @@ and the tracker supports:
 
 - SORT
 - DeepSORT 
-- ByteTrack ([ECCV2022](https://arxiv.org/pdf/2110.06864))
-- Bot-SORT ([arxiv2206](https://arxiv.org/pdf/2206.14651.pdf))
+- ByteTrack ([ECCV2022](https://arxiv.org/pdf/2110.06864)) and ByetTrack-ReID
+- Bot-SORT ([arxiv2206](https://arxiv.org/pdf/2206.14651.pdf)) and Bot-SORT-ReID
 - OCSORT ([CVPR2023](https://openaccess.thecvf.com/content/CVPR2023/papers/Cao_Observation-Centric_SORT_Rethinking_SORT_for_Robust_Multi-Object_Tracking_CVPR_2023_paper.pdf))
+- DeepOCSORT ([ICIP2023](https://arxiv.org/abs/2302.11813))
 - C_BIoU Track ([arxiv2211](https://arxiv.org/pdf/2211.14317v2.pdf))
 - Strong SORT ([IEEE TMM 2023](https://arxiv.org/pdf/2202.13514))
 - Sparse Track ([arxiv 2306](https://arxiv.org/pdf/2306.05238))
@@ -46,8 +48,17 @@ and the tracker supports:
 
 and the reid model supports:
 
+Pedestrain Re-ID:
 - OSNet
 - Extractor from DeepSort
+- ShuffleNet
+- MobileNet
+
+Vehicle Re-ID:
+- VehicleNet ([AICIty-reID-2020](https://github.com/layumi/AICIty-reID-2020))
+
+> **checkpoitns of some Re-ID models**: [Baidu Disk](https://pan.baidu.com/s/1QbVoBz4mPpf4Qsqq1PYXkQ) Code: c655
+
 
 The highlights are:
 - Supporting more trackers than MMTracking
@@ -155,11 +166,11 @@ python train_aux.py --dataset visdrone --workers 8 --device <$GPU_id$> --batch-s
 python tracker/yolo_ultralytics_utils/train_yolo_ultralytics.py --model_weight weights/yolo11m.pt --data_cfg tracker/yolo_ultralytics_utils/data_cfgs/visdrone_det.yaml --epochs 30 --batch_size 8 --img_sz 1280 --device 0
 ```
 
-
+> The training of Re-ID model please refer to its original paper or github repo. The pedestrain Re-ID model such as ShuffleNet, OSNet please refer to [torchreid](https://github.com/KaiyangZhou/deep-person-reid), the vehicle Re-ID model please refer to [AICIty-reID-2020](https://github.com/layumi/AICIty-reID-2020).
 
 ### 😊 Tracking ! 
 
-If you only want to run a demo:
+**If you only want to run a demo**:
 
 ```bash
 python tracker/track_demo.py --obj ${video path or images folder path} --detector ${yolox, yolov7 or yolo_ultra} --tracker ${tracker name} --kalman_format ${kalman format, sort, byte, ...} --detector_model_path ${detector weight path} --save_images
@@ -176,13 +187,27 @@ For example:
 python tracker/track_demo.py --obj M0203.mp4 --detector yolo_ultra_v8 --tracker deepsort --kalman_format byte --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt --save_images
 ```
 
-If you want to run trackers on dataset:
+**If you want to run trackers on dataset**:
 
 ```bash
 python tracker/track.py --dataset ${dataset name, related with the yaml file} --detector ${yolox, yolo_ultra_v8 or yolov7} --tracker ${tracker name} --kalman_format ${kalman format, sort, byte, ...} --detector_model_path ${detector weight path}
 ```
 
-For example:
+In addition, you can also specify
+
+`--reid`: Enable the reid model (currently useful for ByteTrack, BoT-SORT, OCSORT)
+
+`--reid_model`: Which model to use: Refer to `REID_MODEL_DICT` in `tracker/trackers/reid_models/engine.py` to select
+
+`--reid_model_path`: Loaded re-identification model weight path
+
+`--conf_thresh_low`: For two-stage association models (ByteTrack, BoT-SORT, etc.), the minimum confidence threshold (default 0.1)
+
+`--fuse_detection_score`: If added, the IoU value and the detection confidence value are fused, for example, the source code of BoT-SORT does this
+
+`--save_images`: Save the result image
+
+***Examples of tracking algorithms***:
 
 - SORT: `python tracker/track.py --dataset uavdt --detector yolo_ultra_v8 --tracker sort --kalman_format sort --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt `
 

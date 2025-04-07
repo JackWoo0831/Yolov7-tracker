@@ -92,6 +92,7 @@ def get_args():
     parser.add_argument('--img_size', type=int, default=1280, help='image size, [h, w]')
 
     parser.add_argument('--conf_thresh', type=float, default=0.2, help='filter tracks')
+    parser.add_argument('--conf_thresh_low', type=float, default=0.1, help='filter low conf detections, used in two-stage association')
     parser.add_argument('--nms_thresh', type=float, default=0.7, help='thresh for NMS')
     parser.add_argument('--iou_thresh', type=float, default=0.5, help='IOU thresh to filter tracks')
 

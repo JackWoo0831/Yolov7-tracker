@@ -115,7 +115,7 @@ def get_args():
     parser.add_argument('--gamma', type=float, default=0.1, help='param to control fusing motion and apperance dist')
     parser.add_argument('--min_area', type=float, default=150, help='use to filter small bboxs')
 
-    parser.add_argument('--save_dir', type=str, default='track_results/{dataset_name}/{split}')
+    parser.add_argument('--save_dir', type=str, default='track_results/{tracker_name}/{dataset_name}/{split}')
     parser.add_argument('--save_images', action='store_true', help='save tracking results (image)')
     parser.add_argument('--save_videos', action='store_true', help='save tracking results (video)')
     
@@ -200,7 +200,9 @@ def main(args, dataset_cfgs):
 
     logger.info(f'Total {len(seqs)} seqs will be tracked: {seqs}')
 
-    save_dir = args.save_dir.format(dataset_name=args.dataset, split=SPLIT)
+    save_dir = args.save_dir.format(tracker_name=args.tracker, dataset_name=args.dataset, split=SPLIT)
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
 
 
     """4. Tracking"""
@@ -292,7 +294,7 @@ def main(args, dataset_cfgs):
                 plot_img(img=ori_img, frame_id=frame_idx, results=[cur_tlwh, cur_id, cur_cls], 
                          save_dir=os.path.join(save_dir, 'vis_results'))
 
-        save_results(folder_name=os.path.join(args.dataset, SPLIT), 
+        save_results(save_dir=save_dir, 
                      seq_name=seq, 
                      results=results)
         
