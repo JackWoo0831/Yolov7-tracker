@@ -85,12 +85,14 @@ def get_args():
     parser.add_argument('--dataset', type=str, default='visdrone_part', help='visdrone, mot17, etc.')
     parser.add_argument('--detector', type=str, default='yolo_ultralytics_v8', help='yolov7, yolox, etc.')
     parser.add_argument('--tracker', type=str, default='sort', help='sort, deepsort, etc')
+    parser.add_argument('--reid', action='store_true', help='enable reid model, work in bot, byte, ocsort and hybridsort')
     parser.add_argument('--reid_model', type=str, default='osnet_x0_25', help='osnet or deppsort')
 
     parser.add_argument('--kalman_format', type=str, default='default', help='use what kind of Kalman, sort, deepsort, byte, etc.')
     parser.add_argument('--img_size', type=int, default=1280, help='image size, [h, w]')
 
-    parser.add_argument('--conf_thresh', type=float, default=0.2, help='filter tracks')
+    parser.add_argument('--conf_thresh', type=float, default=0.2, help='filter detections')
+    parser.add_argument('--conf_thresh_low', type=float, default=0.1, help='filter low conf detections, used in two-stage association')
     parser.add_argument('--nms_thresh', type=float, default=0.7, help='thresh for NMS')
     parser.add_argument('--iou_thresh', type=float, default=0.5, help='IOU thresh to filter tracks')
 
@@ -108,7 +110,7 @@ def get_args():
 
    
     """other options"""
-    parser.add_argument('--discard_reid', action='store_true', help='discard reid model, only work in bot-sort etc. which need a reid part')
+    parser.add_argument('--fuse_detection_score', action='store_true', help='fuse detection conf with iou score')
     parser.add_argument('--track_buffer', type=int, default=30, help='tracking buffer')
     parser.add_argument('--gamma', type=float, default=0.1, help='param to control fusing motion and apperance dist')
     parser.add_argument('--min_area', type=float, default=150, help='use to filter small bboxs')

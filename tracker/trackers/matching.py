@@ -234,6 +234,96 @@ def observation_centric_association(tracklets, detections, velocities, previous_
     return matches, unmatched_a, unmatched_b
 
 """
+observation centric association, with velocity and reid feature, for Deep OC Sort
+"""
+def compute_aw_max_metric(embed_cost, w_association_emb, bottom=0.5):
+    '''
+    helper func of observation_centric_association_w_reid
+    '''
+    w_emb = np.full_like(embed_cost, w_association_emb)
+
+    for idx in range(embed_cost.shape[0]):
+        inds = np.argsort(-embed_cost[idx])
+        # If there's less than two matches, just keep original weight
+        if len(inds) < 2:
+            continue
+        if embed_cost[idx, inds[0]] == 0:
+            row_weight = 0
+        else:
+            row_weight = 1 - max(
+                (embed_cost[idx, inds[1]] / embed_cost[idx, inds[0]]) - bottom, 0
+            ) / (1 - bottom)
+        w_emb[idx] *= row_weight
+
+    for idj in range(embed_cost.shape[1]):
+        inds = np.argsort(-embed_cost[:, idj])
+        # If there's less than two matches, just keep original weight
+        if len(inds) < 2:
+            continue
+        if embed_cost[inds[0], idj] == 0:
+            col_weight = 0
+        else:
+            col_weight = 1 - max(
+                (embed_cost[inds[1], idj] / embed_cost[inds[0], idj]) - bottom, 0
+            ) / (1 - bottom)
+        w_emb[:, idj] *= col_weight
+
+    return w_emb * embed_cost
+
+def observation_centric_association_w_reid(tracklets, detections, velocities, previous_obs, vdc_weight=0.05, iou_threshold=0.3, 
+                                           aw_off=False, w_assoc_emb=0.5, aw_param=0.5):    
+
+    if len(tracklets) == 0 or len(detections) == 0:
+        return np.empty((0, 2), dtype=int), tuple(range(len(tracklets))), tuple(range(len(detections)))
+    
+    # get numpy format bboxes
+    trk_tlbrs = np.array([track.tlbr for track in tracklets])
+    det_tlbrs = np.array([det.tlbr for det in detections])
+    det_scores = np.array([det.score for det in detections])
+
+    iou_matrix = bbox_ious(trk_tlbrs, det_tlbrs)
+
+    # cal embedding distance
+    embed_cost = 1. - embedding_distance(tracklets, detections, metric='cosine')
+
+    # NOTE for iou < iou_threshold, directly set to -inf, otherwise after solving the linear assignment, 
+    # some matched pairs will have no overlaps
+    iou_matrix[iou_matrix < iou_threshold] = - 1e5
+
+    Y, X = speed_direction_batch(det_tlbrs, previous_obs)
+    inertia_Y, inertia_X = velocities[:,0], velocities[:,1]
+    inertia_Y = np.repeat(inertia_Y[:, np.newaxis], Y.shape[1], axis=1)
+    inertia_X = np.repeat(inertia_X[:, np.newaxis], X.shape[1], axis=1)
+    diff_angle_cos = inertia_X * X + inertia_Y * Y
+    diff_angle_cos = np.clip(diff_angle_cos, a_min=-1, a_max=1)
+    diff_angle = np.arccos(diff_angle_cos)
+    diff_angle = (np.pi / 2.0 - np.abs(diff_angle)) / np.pi
+
+    valid_mask = np.ones(previous_obs.shape[0])
+    valid_mask[np.where(previous_obs[:, 4] < 0)] = 0
+
+    scores = np.repeat(det_scores[:, np.newaxis], trk_tlbrs.shape[0], axis=1)
+    valid_mask = np.repeat(valid_mask[:, np.newaxis], X.shape[1], axis=1)
+
+    angle_diff_cost = (valid_mask * diff_angle) * vdc_weight
+    angle_diff_cost = angle_diff_cost * scores.T
+
+
+    # cal embedding cost, eq. 4~6 in paper
+    embed_cost[iou_matrix <= 0] = 0
+    if not aw_off:
+        embed_cost = compute_aw_max_metric(embed_cost, w_assoc_emb, bottom=aw_param)
+    else:
+        embed_cost *= w_assoc_emb
+
+    matches, unmatched_a, unmatched_b = linear_assignment(- (iou_matrix + angle_diff_cost + embed_cost), thresh=0.0)
+
+
+    return matches, unmatched_a, unmatched_b
+
+
+
+"""
 helper func of observation_centric_association (OC Sort) and association_weak_cues (Hybrid Sort)
 """
 def speed_direction_batch(dets, tracks, mode='center'):

@@ -1,3 +1,7 @@
+'''
+Copied from torch-reid repo https://github.com/KaiyangZhou/deep-person-reid/
+'''
+
 from __future__ import division, absolute_import
 import warnings
 import torch

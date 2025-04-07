@@ -45,6 +45,9 @@ class UCMCTracker(object):
         Tracklet_w_UCMC.A = A 
         Tracklet_w_UCMC.InvA = InvA
 
+        # once init, clear all trackid count to avoid large id
+        BaseTrack.clear_count()
+
     def _read_cam_param(self, ):
         """
         read the camera param, borrowed from https://github.com/corfyi/UCMCTrack
@@ -106,7 +109,7 @@ class UCMCTracker(object):
         categories = output_results[:, -1]
 
         remain_inds = scores > self.args.conf_thresh
-        inds_low = scores > 0.1
+        inds_low = scores > self.args.conf_thresh_low
         inds_high = scores < self.args.conf_thresh
 
         inds_second = np.logical_and(inds_low, inds_high)

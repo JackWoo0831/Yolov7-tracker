@@ -13,36 +13,7 @@ from .basetrack import BaseTrack, TrackState
 from .tracklet import Tracklet, Tracklet_w_depth
 from .matching import *
 
-from .reid_models.OSNet import *
-from .reid_models.load_model_tools import load_pretrained_weights
-from .reid_models.deepsort_reid import Extractor
-
-from .camera_motion_compensation import GMC
-
-REID_MODEL_DICT = {
-    'osnet_x1_0': osnet_x1_0, 
-    'osnet_x0_75': osnet_x0_75, 
-    'osnet_x0_5': osnet_x0_5, 
-    'osnet_x0_25': osnet_x0_25, 
-    'deepsort': Extractor
-}
-
-
-def load_reid_model(reid_model, reid_model_path):
-    
-    if 'osnet' in reid_model:
-        func = REID_MODEL_DICT[reid_model]
-        model = func(num_classes=1, pretrained=False, )
-        load_pretrained_weights(model, reid_model_path)
-        model.cuda().eval()
-        
-    elif 'deepsort' in reid_model:
-        model = REID_MODEL_DICT[reid_model](reid_model_path, use_cuda=True)
-
-    else:
-        raise NotImplementedError
-    
-    return model
+from .camera_motion_compensation.cmc import GMC
 
 class SparseTracker(object):
     def __init__(self, args, frame_rate=30):
@@ -61,6 +32,9 @@ class SparseTracker(object):
 
         # camera motion compensation module
         self.gmc = GMC(method='orb', downscale=2, verbose=None)
+
+        # once init, clear all trackid count to avoid large id
+        BaseTrack.clear_count()
 
     def get_deep_range(self, obj, step):
         col = []
@@ -178,7 +152,7 @@ class SparseTracker(object):
         categories = output_results[:, -1]
 
         remain_inds = scores > self.args.conf_thresh
-        inds_low = scores > 0.1
+        inds_low = scores > self.args.conf_thresh_low
         inds_high = scores < self.args.conf_thresh
 
         inds_second = np.logical_and(inds_low, inds_high)

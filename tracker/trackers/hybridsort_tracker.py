@@ -27,6 +27,9 @@ class HybridSortTracker(object):
 
         self.delta_t = 3
 
+        # once init, clear all trackid count to avoid large id
+        BaseTrack.clear_count()
+
     @staticmethod
     def k_previous_obs(observations, cur_age, k):
         if len(observations) == 0:
@@ -54,7 +57,7 @@ class HybridSortTracker(object):
         categories = output_results[:, -1]
 
         remain_inds = scores > self.args.conf_thresh
-        inds_low = scores > 0.1
+        inds_low = scores > self.args.conf_thresh_low
         inds_high = scores < self.args.conf_thresh
 
         inds_second = np.logical_and(inds_low, inds_high)

@@ -52,7 +52,7 @@ class NSAKalman(BaseKalman):
 
         self.kf.P = np.diag(np.square(std))  # P_{0, 0}
 
-    def predict(self, ):
+    def predict(self, is_activated=True):
         """ predict step
 
         x_{n + 1, n} = F * x_{n, n} 

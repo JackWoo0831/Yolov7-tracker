@@ -52,13 +52,18 @@ class ByteKalman(BaseKalman):
 
         self.kf.P = np.diag(np.square(std))  # P_{0, 0}
 
-    def predict(self, ):
+    def predict(self, is_activated=True):
         """ predict step
 
         x_{n + 1, n} = F * x_{n, n} 
         P_{n + 1, n} = F * P_{n, n} * F^T + Q
 
         """
+
+        if not is_activated:
+            # if not activated, set the velocity of h to 0
+            self.kf.x[7] = 0.0
+
         std_pos = [
             self._std_weight_position * self.kf.x[3],
             self._std_weight_position * self.kf.x[3],

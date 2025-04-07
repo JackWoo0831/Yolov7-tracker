@@ -12,8 +12,8 @@ class BotKalman(BaseKalman):
 
         F = np.eye(state_dim, state_dim)
         '''
-        [1, 0, 0, 0, 1, 0, 0]
-        [0, 1, 0, 0, 0, 1, 0]
+        [1, 0, 0, 0, 1, 0, 0, 0]
+        [0, 1, 0, 0, 0, 1, 0, 0]
         ...
         '''
         for i in range(state_dim // 2):
@@ -54,13 +54,19 @@ class BotKalman(BaseKalman):
 
         self.kf.P = np.diag(np.square(std))  # P_{0, 0}
 
-    def predict(self, ):
+    def predict(self, is_activated=True):
         """ predict step
 
         x_{n + 1, n} = F * x_{n, n} 
         P_{n + 1, n} = F * P_{n, n} * F^T + Q
 
         """
+
+        if not is_activated:
+            # if not activated, set the velocity of w and h to 0
+            self.kf.x[6] = 0.0
+            self.kf.x[7] = 0.0
+
         std_pos = [
             self._std_weight_position * self.kf.x[2],
             self._std_weight_position * self.kf.x[3],
@@ -80,7 +86,7 @@ class BotKalman(BaseKalman):
         """ update step
         
         Args:
-            z: observation x-y-a-h format
+            z: observation x-y-w-h format
 
         K_n = P_{n, n - 1} * H^T * (H P_{n, n - 1} H^T + R)^{-1}
         x_{n, n} = x_{n, n - 1} + K_n * (z - H * x_{n, n - 1})

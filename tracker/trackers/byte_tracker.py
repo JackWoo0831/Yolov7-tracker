@@ -5,8 +5,13 @@ ByteTrack
 import numpy as np
 from collections import deque
 from .basetrack import BaseTrack, TrackState
-from .tracklet import Tracklet
+from .tracklet import Tracklet, Tracklet_w_reid
 from .matching import *
+
+# for reid
+import torch
+import torchvision.transforms as T
+from .reid_models.engine import load_reid_model, crop_and_resize
 
 class ByteTracker(object):
     def __init__(self, args, frame_rate=30):
@@ -22,6 +27,31 @@ class ByteTracker(object):
         self.max_time_lost = self.buffer_size
 
         self.motion = args.kalman_format
+
+        # whether to use reid 
+        self.with_reid = args.reid
+        self.reid_model = None
+        if self.with_reid:
+            self.reid_model = load_reid_model(args.reid_model, args.reid_model_path, device=args.device)        
+
+        # once init, clear all trackid count to avoid large id
+        BaseTrack.clear_count()
+
+    @torch.no_grad()
+    def get_feature(self, tlwhs, ori_img):
+        """
+        get apperance feature of an object
+        tlwhs: shape (num_of_objects, 4)
+        ori_img: original image, np.ndarray, shape(H, W, C)
+        """
+
+        if tlwhs.size == 0:
+            return np.empty((0, 512))
+
+        crop_bboxes = crop_and_resize(tlwhs, ori_img, input_format='tlwh', sz=(64, 128))
+        features = self.reid_model(crop_bboxes).cpu().numpy()
+
+        return features
 
     def update(self, output_results, img, ori_img):
         """
@@ -39,7 +69,7 @@ class ByteTracker(object):
         categories = output_results[:, -1]
 
         remain_inds = scores > self.args.conf_thresh
-        inds_low = scores > 0.1
+        inds_low = scores > self.args.conf_thresh_low
         inds_high = scores < self.args.conf_thresh
 
         inds_second = np.logical_and(inds_low, inds_high)
@@ -52,10 +82,17 @@ class ByteTracker(object):
         scores_keep = scores[remain_inds]
         scores_second = scores[inds_second]
 
+        """Step 1: Extract reid features"""
+        if self.with_reid:
+            features_keep = self.get_feature(tlwhs=dets[:, :4], ori_img=ori_img)
+
         if len(dets) > 0:
-            '''Detections'''
-            detections = [Tracklet(tlwh, s, cate, motion=self.motion) for
-                          (tlwh, s, cate) in zip(dets, scores_keep, cates)]
+            if self.with_reid:
+                detections = [Tracklet_w_reid(tlwh, s, cate, motion=self.motion, feat=feat) for
+                            (tlwh, s, cate, feat) in zip(dets, scores_keep, cates, features_keep)]
+            else:
+                detections = [Tracklet(tlwh, s, cate, motion=self.motion) for
+                            (tlwh, s, cate) in zip(dets, scores_keep, cates)]
         else:
             detections = []
 
@@ -76,6 +113,16 @@ class ByteTracker(object):
             tracklet.predict()
 
         dists = iou_distance(tracklet_pool, detections)
+
+        # fuse detection conf into iou dist
+        if self.args.fuse_detection_score:
+            dists = fuse_det_score(dists, detections)
+
+        if self.with_reid:
+            # eq. 11 in Bot-SORT paper, i.e., the common method of 
+            # fusing reid and motion. you can adjust the weight here
+            emb_dists = embedding_distance(tracklet_pool, detections)
+            dists = 0.9 * dists + 0.1 * emb_dists
         
         matches, u_track, u_detection = linear_assignment(dists, thresh=0.9)
 
@@ -119,6 +166,10 @@ class ByteTracker(object):
         '''Deal with unconfirmed tracks, usually tracks with only one beginning frame'''
         detections = [detections[i] for i in u_detection]
         dists = iou_distance(unconfirmed, detections)
+        
+        # fuse detection conf into iou dist
+        if self.args.fuse_detection_score:
+            dists = fuse_det_score(dists, detections)
        
         matches, u_unconfirmed, u_detection = linear_assignment(dists, thresh=0.7)
 

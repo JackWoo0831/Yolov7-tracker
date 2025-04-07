@@ -54,7 +54,7 @@ class UCMCKalman(BaseKalman):
 
         self.kf.R = R
 
-    def predict(self):
+    def predict(self, is_activated=True):
         self.kf.predict()
 
     def update(self, z, R):

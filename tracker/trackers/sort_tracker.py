@@ -23,6 +23,9 @@ class SortTracker(object):
 
         self.motion = args.kalman_format
 
+        # once init, clear all trackid count to avoid large id
+        BaseTrack.clear_count()
+
     def update(self, output_results, img, ori_img):
         """
         output_results: processed detections (scale to original size) tlbr format

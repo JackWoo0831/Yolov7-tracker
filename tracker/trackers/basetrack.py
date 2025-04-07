@@ -35,6 +35,10 @@ class BaseTrack(object):
     def next_id():
         BaseTrack._count += 1
         return BaseTrack._count
+    
+    @staticmethod
+    def clear_count():
+        BaseTrack._count = 0
 
     def activate(self, *args):
         raise NotImplementedError
@@ -106,12 +110,6 @@ class BaseTrack(object):
         ret[3] = tlwh[2] / tlwh[3]
         return ret
     
-    def to_xyah(self):
-        return self.tlwh_to_xyah(self.tlwh)
-    
-    def to_xywh(self):
-        return self.tlwh_to_xywh(self.tlwh)
-
     @staticmethod
     def tlbr_to_tlwh(tlbr):
         ret = np.asarray(tlbr).copy()
@@ -124,6 +122,12 @@ class BaseTrack(object):
         ret = np.asarray(tlwh).copy()
         ret[2:] += ret[:2]
         return ret
+    
+    def to_xyah(self):
+        return self.tlwh_to_xyah(self.tlwh)
+    
+    def to_xywh(self):
+        return self.tlwh_to_xywh(self.tlwh)
 
     def __repr__(self):
         return 'OT_{}_({}-{})'.format(self.track_id, self.start_frame, self.end_frame)

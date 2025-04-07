@@ -13,36 +13,10 @@ from .basetrack import BaseTrack, TrackState
 from .tracklet import Tracklet, Tracklet_w_reid
 from .matching import *
 
-from .reid_models.OSNet import *
-from .reid_models.load_model_tools import load_pretrained_weights
-from .reid_models.deepsort_reid import Extractor
+# for reid
+from .reid_models.engine import load_reid_model, crop_and_resize, select_device
 
-from .camera_motion_compensation import GMC
-
-REID_MODEL_DICT = {
-    'osnet_x1_0': osnet_x1_0, 
-    'osnet_x0_75': osnet_x0_75, 
-    'osnet_x0_5': osnet_x0_5, 
-    'osnet_x0_25': osnet_x0_25, 
-    'deepsort': Extractor
-}
-
-
-def load_reid_model(reid_model, reid_model_path):
-    
-    if 'osnet' in reid_model:
-        func = REID_MODEL_DICT[reid_model]
-        model = func(num_classes=1, pretrained=False, )
-        load_pretrained_weights(model, reid_model_path)
-        model.cuda().eval()
-        
-    elif 'deepsort' in reid_model:
-        model = REID_MODEL_DICT[reid_model](reid_model_path, use_cuda=True)
-
-    else:
-        raise NotImplementedError
-    
-    return model
+from .camera_motion_compensation.cmc import GMC
 
 class BotTracker(object):
     def __init__(self, args, frame_rate=30):
@@ -59,60 +33,34 @@ class BotTracker(object):
 
         self.motion = args.kalman_format
 
-        self.with_reid = not args.discard_reid
+        self.with_reid = args.reid
 
-        self.reid_model, self.crop_transforms = None, None 
+        self.reid_model = None
         if self.with_reid:
-            self.reid_model = load_reid_model(args.reid_model, args.reid_model_path)
-            self.crop_transforms = T.Compose([
-            # T.ToPILImage(),
-            # T.Resize(size=(256, 128)),
-            T.ToTensor(),  # (c, 128, 256)
-            T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ])
-            
+            self.reid_model = load_reid_model(args.reid_model, args.reid_model_path, device=args.device)
+            self.reid_model.eval()            
 
         # camera motion compensation module
         self.gmc = GMC(method='orb', downscale=2, verbose=None)
 
-    def reid_preprocess(self, obj_bbox):
-        """
-        preprocess cropped object bboxes 
-        
-        obj_bbox: np.ndarray, shape=(h_obj, w_obj, c)
+        # once init, clear all trackid count to avoid large id
+        BaseTrack.clear_count()
 
-        return: 
-        torch.Tensor of shape (c, 128, 256)
-        """
-        obj_bbox = cv2.resize(obj_bbox.astype(np.float32) / 255.0, dsize=(128, 128))  # shape: (128, 256, c)
-
-        return self.crop_transforms(obj_bbox)
-
+    @torch.no_grad()
     def get_feature(self, tlwhs, ori_img):
         """
         get apperance feature of an object
         tlwhs: shape (num_of_objects, 4)
         ori_img: original image, np.ndarray, shape(H, W, C)
         """
-        obj_bbox = []
 
-        for tlwh in tlwhs:
-            tlwh = list(map(int, tlwh))
-            # if any(tlbr_ == -1 for tlbr_ in tlwh):
-            #     print(tlwh)
-            
-            tlbr_tensor = self.reid_preprocess(ori_img[tlwh[1]: tlwh[1] + tlwh[3], tlwh[0]: tlwh[0] + tlwh[2]])
-            obj_bbox.append(tlbr_tensor)
-        
-        if not obj_bbox:
-            return np.array([])
-        
-        obj_bbox = torch.stack(obj_bbox, dim=0)
-        obj_bbox = obj_bbox.cuda()  
-        
-        features = self.reid_model(obj_bbox)  # shape: (num_of_objects, feature_dim)
-        return features.cpu().detach().numpy()
+        if tlwhs.size == 0:
+            return np.empty((0, 512))
 
+        crop_bboxes = crop_and_resize(tlwhs, ori_img, input_format='tlwh', sz=(64, 128))
+        features = self.reid_model(crop_bboxes).cpu().numpy()
+
+        return features
 
     def update(self, output_results, img, ori_img):
         """
@@ -181,10 +129,13 @@ class BotTracker(object):
         ious_dists = iou_distance(tracklet_pool, detections)
         ious_dists_mask = (ious_dists > 0.5)  # high conf iou
 
+        # fuse detection conf into iou dist
+        if self.args.fuse_detection_score:
+            ious_dists = fuse_det_score(ious_dists, detections)
+
         if self.with_reid:
             # mixed cost matrix
             emb_dists = embedding_distance(tracklet_pool, detections) / 2.0
-            raw_emb_dists = emb_dists.copy()
             emb_dists[emb_dists > 0.25] = 1.0
             emb_dists[ious_dists_mask] = 1.0
             dists = np.minimum(ious_dists, emb_dists)
@@ -238,9 +189,12 @@ class BotTracker(object):
         ious_dists = iou_distance(unconfirmed, detections)
         ious_dists_mask = (ious_dists > 0.5)
 
+        # fuse detection conf into iou dist
+        if self.args.fuse_detection_score:
+            ious_dists = fuse_det_score(ious_dists, detections)
+
         if self.with_reid:
             emb_dists = embedding_distance(unconfirmed, detections) / 2.0
-            raw_emb_dists = emb_dists.copy()
             emb_dists[emb_dists > 0.25] = 1.0
             emb_dists[ious_dists_mask] = 1.0
             dists = np.minimum(ious_dists, emb_dists)

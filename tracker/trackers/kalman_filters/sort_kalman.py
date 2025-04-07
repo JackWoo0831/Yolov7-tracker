@@ -47,7 +47,7 @@ class SORTKalman(BaseKalman):
         self.kf.x[:4] = observation
 
 
-    def predict(self, ):
+    def predict(self, is_activated=True):
         """ predict step
         
         """

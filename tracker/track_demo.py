@@ -85,6 +85,7 @@ def get_args():
 
     parser.add_argument('--detector', type=str, default='yolo_ultralytics_v8', help='yolov7, yolox, etc.')
     parser.add_argument('--tracker', type=str, default='sort', help='sort, deepsort, etc')
+    parser.add_argument('--reid', action='store_true', help='enable reid model, work in bot, byte, ocsort and hybridsort')
     parser.add_argument('--reid_model', type=str, default='osnet_x0_25', help='osnet or deppsort')
 
     parser.add_argument('--kalman_format', type=str, default='default', help='use what kind of Kalman, sort, deepsort, byte, etc.')
@@ -109,7 +110,7 @@ def get_args():
 
    
     """other options"""
-    parser.add_argument('--discard_reid', action='store_true', help='discard reid model, only work in bot-sort etc. which need a reid part')
+    parser.add_argument('--fuse_detection_score', action='store_true', help='fuse detection conf with iou score')
     parser.add_argument('--track_buffer', type=int, default=30, help='tracking buffer')
     parser.add_argument('--gamma', type=float, default=0.1, help='param to control fusing motion and apperance dist')
     parser.add_argument('--min_area', type=float, default=150, help='use to filter small bboxs')
@@ -120,6 +121,8 @@ def get_args():
     
     parser.add_argument('--track_eval', type=bool, default=True, help='Use TrackEval to evaluate')
 
+    """camera parameter"""
+    parser.add_argument('--camera_parameter_folder', type=str, default='./tracker/cam_param_files', help='folder path of camera parameter files')
     return parser.parse_args()
 
 def main(args):

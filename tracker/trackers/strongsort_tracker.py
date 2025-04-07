@@ -13,35 +13,8 @@ from .basetrack import BaseTrack, TrackState
 from .tracklet import Tracklet, Tracklet_w_reid
 from .matching import *
 
-from .reid_models.OSNet import *
-from .reid_models.load_model_tools import load_pretrained_weights
-from .reid_models.deepsort_reid import Extractor
-
-REID_MODEL_DICT = {
-    'osnet_x1_0': osnet_x1_0, 
-    'osnet_x0_75': osnet_x0_75, 
-    'osnet_x0_5': osnet_x0_5, 
-    'osnet_x0_25': osnet_x0_25, 
-    'deepsort': Extractor
-}
-
-
-def load_reid_model(reid_model, reid_model_path):
-    
-    if 'osnet' in reid_model:
-        func = REID_MODEL_DICT[reid_model]
-        model = func(num_classes=1, pretrained=False, )
-        load_pretrained_weights(model, reid_model_path)
-        model.cuda().eval()
-        
-    elif 'deepsort' in reid_model:
-        model = REID_MODEL_DICT[reid_model](reid_model_path, use_cuda=True)
-
-    else:
-        raise NotImplementedError
-    
-    return model
-
+# for reid
+from .reid_models.engine import load_reid_model, crop_and_resize, select_device
 
 class StrongSortTracker(object):
 
@@ -61,61 +34,36 @@ class StrongSortTracker(object):
 
         self.with_reid = not args.discard_reid
 
-        self.reid_model, self.crop_transforms = None, None 
+        self.with_reid = args.reid
+
+        self.reid_model = None
         if self.with_reid:
-            self.reid_model = load_reid_model(args.reid_model, args.reid_model_path)
-            self.crop_transforms = T.Compose([
-            # T.ToPILImage(),
-            # T.Resize(size=(256, 128)),
-            T.ToTensor(),  # (c, 128, 256)
-            T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ])
+            self.reid_model = load_reid_model(args.reid_model, args.reid_model_path, device=args.device)
+            self.reid_model.eval()       
             
         self.bbox_crop_size = (64, 128) if 'deepsort' in args.reid_model else (128, 128)
 
         self.lambda_ = 0.98  # the coef of cost mix in eq. 10 in paper
+
+        # once init, clear all trackid count to avoid large id
+        BaseTrack.clear_count()
         
 
-    def reid_preprocess(self, obj_bbox):
-        """
-        preprocess cropped object bboxes 
-        
-        obj_bbox: np.ndarray, shape=(h_obj, w_obj, c)
-
-        return: 
-        torch.Tensor of shape (c, 128, 256)
-        """
-
-        obj_bbox = cv2.resize(obj_bbox.astype(np.float32) / 255.0, dsize=self.bbox_crop_size)  # shape: (h, w, c)
-
-        return self.crop_transforms(obj_bbox)
-
+    @torch.no_grad()
     def get_feature(self, tlwhs, ori_img):
         """
         get apperance feature of an object
         tlwhs: shape (num_of_objects, 4)
         ori_img: original image, np.ndarray, shape(H, W, C)
         """
-        obj_bbox = []
 
-        for tlwh in tlwhs:
-            tlwh = list(map(int, tlwh))
+        if tlwhs.size == 0:
+            return np.empty((0, 512))
 
-            # limit to the legal range
-            tlwh[0], tlwh[1] = max(tlwh[0], 0), max(tlwh[1], 0)
-            
-            tlbr_tensor = self.reid_preprocess(ori_img[tlwh[1]: tlwh[1] + tlwh[3], tlwh[0]: tlwh[0] + tlwh[2]])
+        crop_bboxes = crop_and_resize(tlwhs, ori_img, input_format='tlwh', sz=(64, 128))
+        features = self.reid_model(crop_bboxes).cpu().numpy()
 
-            obj_bbox.append(tlbr_tensor)
-        
-        if not obj_bbox:
-            return np.array([])
-        
-        obj_bbox = torch.stack(obj_bbox, dim=0)
-        obj_bbox = obj_bbox.cuda()  
-        
-        features = self.reid_model(obj_bbox)  # shape: (num_of_objects, feature_dim)
-        return features.cpu().detach().numpy()
+        return features
     
     def update(self, output_results, img, ori_img):
         """

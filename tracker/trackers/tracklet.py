@@ -54,7 +54,7 @@ class Tracklet(BaseTrack):
         self.kalman_filter.initialize(self.convert_func(self._tlwh))
 
     def predict(self):
-        self.kalman_filter.predict()
+        self.kalman_filter.predict(is_activated=self.state == TrackState.Tracked)
         self.time_since_update += 1
 
     def activate(self, frame_id):
@@ -68,13 +68,14 @@ class Tracklet(BaseTrack):
 
 
     def re_activate(self, new_track, frame_id, new_id=False):
+        self.frame_id = frame_id
         
         # TODO different convert
         self.kalman_filter.update(self.convert_func(new_track.tlwh))
 
         self.state = TrackState.Tracked
         self.is_activated = True
-        self.frame_id = frame_id
+        
         if new_id:
             self.track_id = self.next_id()
         self.score = new_track.score
@@ -139,13 +140,17 @@ class Tracklet_w_reid(Tracklet):
 
         self.alpha = 0.9
 
-    def update_features(self, feat):
+    def update_features(self, feat, alpha=None):
+        '''
+        alpha: if specified, use alpha instead of self.alpha
+        '''
         feat /= np.linalg.norm(feat)
         self.curr_feat = feat
         if self.smooth_feat is None:
             self.smooth_feat = feat
         else:
-            self.smooth_feat = self.alpha * self.smooth_feat + (1 - self.alpha) * feat
+            alpha_ = self.alpha if alpha is None else alpha
+            self.smooth_feat = alpha_ * self.smooth_feat + (1 - alpha_) * feat
         self.features.append(feat)
         self.smooth_feat /= np.linalg.norm(self.smooth_feat)
 
@@ -190,10 +195,11 @@ class Tracklet_w_reid(Tracklet):
 
 class Tracklet_w_velocity(Tracklet):
     """
-    Tracklet class with center point velocity, for ocsort.
+    Tracklet class with center point velocity, for ocsort or deep ocsort
     """
     
-    def __init__(self, tlwh, score, category, motion='byte', delta_t=3):
+    def __init__(self, tlwh, score, category, motion='byte', delta_t=3, 
+                 feat=None, feat_history=50, det_conf_thresh=0.1):
         super().__init__(tlwh, score, category, motion)
 
         self.last_observation = np.array([-1, -1, -1, -1, -1])  # placeholder
@@ -203,6 +209,31 @@ class Tracklet_w_velocity(Tracklet):
         self.delta_t = delta_t
 
         self.age = 0  # mark the age
+
+        # reid featurs, for deep ocsort
+        self.features = deque([], maxlen=feat_history)  # all features
+        self.smooth_feat = None  # EMA feature
+        self.curr_feat = None  # current feature
+        if feat is not None:
+            self.update_features(feat)
+
+        # the dynamic alpha in eq.2~3 in deep ocsort paper
+        self.alpha_fixed_emb = 0.95  # defult param
+        trust = (score - det_conf_thresh) / (1. - det_conf_thresh)
+        self.dynamic_alpha = self.alpha_fixed_emb + (1. - self.alpha_fixed_emb) * (1. - trust)
+
+    def update_features(self, feat, alpha=1.0):
+        '''
+        alpha: if specified, use alpha instead of self.alpha
+        '''
+        feat /= np.linalg.norm(feat)
+        self.curr_feat = feat
+        if self.smooth_feat is None:
+            self.smooth_feat = feat
+        else:
+            self.smooth_feat = alpha * self.smooth_feat + (1 - alpha) * feat
+        self.features.append(feat)
+        self.smooth_feat /= np.linalg.norm(self.smooth_feat)
 
     @property
     def tlwh(self):
@@ -224,7 +255,7 @@ class Tracklet_w_velocity(Tracklet):
         return speed / norm
     
     def predict(self):
-        self.kalman_filter.predict()
+        self.kalman_filter.predict(is_activated=self.state == TrackState.Tracked)
 
         self.age += 1
         self.time_since_update += 1
@@ -261,6 +292,10 @@ class Tracklet_w_velocity(Tracklet):
         self.last_observation = new_observation
         self.observations[self.age] = new_observation
         self.history_observations.append(new_observation)
+
+        # update reid features
+        if self.curr_feat is not None:
+            self.update_features(self.curr_feat, alpha=new_track.dynamic_alpha)
 
 
 class Tracklet_w_velocity_four_corner(Tracklet):
@@ -325,7 +360,7 @@ class Tracklet_w_velocity_four_corner(Tracklet):
         return speed / norm
 
     def predict(self):
-        self.kalman_filter.predict()
+        self.kalman_filter.predict(is_activated=self.state == TrackState.Tracked)
 
         self.age += 1
         self.time_since_update += 1

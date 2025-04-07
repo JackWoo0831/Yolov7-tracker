@@ -38,7 +38,7 @@ class HybridSORTKalman(BaseKalman):
         self.kf.x[:5] = observation
 
 
-    def predict(self, ):
+    def predict(self, is_activated=True):
         """ predict step
         
         """

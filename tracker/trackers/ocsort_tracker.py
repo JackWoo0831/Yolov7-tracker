@@ -10,6 +10,11 @@ from .matching import *
 
 from cython_bbox import bbox_overlaps as bbox_ious
 
+# for reid
+import torch
+import torchvision.transforms as T
+from .reid_models.engine import load_reid_model, crop_and_resize
+
 class OCSortTracker(object):
     def __init__(self, args, frame_rate=30):
         self.tracked_tracklets = []  # type: list[Tracklet]
@@ -26,6 +31,31 @@ class OCSortTracker(object):
         self.motion = args.kalman_format
 
         self.delta_t = 3
+
+        # whether to use reid 
+        self.with_reid = args.reid
+        self.reid_model = None
+        if self.with_reid:
+            self.reid_model = load_reid_model(args.reid_model, args.reid_model_path, device=args.device)    
+
+        # once init, clear all trackid count to avoid large id
+        BaseTrack.clear_count()
+
+    @torch.no_grad()
+    def get_feature(self, tlwhs, ori_img):
+        """
+        get apperance feature of an object
+        tlwhs: shape (num_of_objects, 4)
+        ori_img: original image, np.ndarray, shape(H, W, C)
+        """
+
+        if tlwhs.size == 0:
+            return np.empty((0, 512))
+
+        crop_bboxes = crop_and_resize(tlwhs, ori_img, input_format='tlwh', sz=(64, 128))
+        features = self.reid_model(crop_bboxes).cpu().numpy()
+
+        return features
 
     @staticmethod
     def k_previous_obs(observations, cur_age, k):
@@ -67,10 +97,20 @@ class OCSortTracker(object):
         scores_keep = scores[remain_inds]
         scores_second = scores[inds_second]
 
+        """Step 1: Extract reid features"""
+        if self.with_reid:
+            features_keep = self.get_feature(tlwhs=dets[:, :4], ori_img=ori_img)
+            features_second = self.get_feature(tlwhs=dets_second[:, :4], ori_img=ori_img)
+            # in deep oc sort, low conf detections also need reid features
+
         if len(dets) > 0:
             '''Detections'''
-            detections = [Tracklet_w_velocity(tlwh, s, cate, motion=self.motion) for
-                          (tlwh, s, cate) in zip(dets, scores_keep, cates)]
+            if self.with_reid:
+                detections = [Tracklet_w_velocity(tlwh, s, cate, motion=self.motion, feat=feat) for
+                              (tlwh, s, cate, feat) in zip(dets, scores_keep, cates, features_keep)]
+            else:
+                detections = [Tracklet_w_velocity(tlwh, s, cate, motion=self.motion) for
+                            (tlwh, s, cate) in zip(dets, scores_keep, cates)]
         else:
             detections = []
 
@@ -102,10 +142,17 @@ class OCSortTracker(object):
             tracklet.predict()
 
         # Observation centric cost matrix and assignment
-        matches, u_track, u_detection = observation_centric_association(
-            tracklets=tracklet_pool, detections=detections, iou_threshold=0.3, 
-            velocities=velocities, previous_obs=k_observations, vdc_weight=0.05
-        )
+        if self.with_reid:
+            matches, u_track, u_detection = observation_centric_association_w_reid(
+                tracklets=tracklet_pool, detections=detections, iou_threshold=0.3, 
+                velocities=velocities, previous_obs=k_observations, vdc_weight=0.05
+            )
+        
+        else:
+            matches, u_track, u_detection = observation_centric_association(
+                tracklets=tracklet_pool, detections=detections, iou_threshold=0.3, 
+                velocities=velocities, previous_obs=k_observations, vdc_weight=0.05
+            )
 
         for itracked, idet in matches:
             track = tracklet_pool[itracked]
@@ -121,16 +168,24 @@ class OCSortTracker(object):
         # association the untrack to the low score detections
         if len(dets_second) > 0:
             '''Detections'''
-            detections_second = [Tracklet_w_velocity(tlwh, s, cate, motion=self.motion) for
-                          (tlwh, s, cate) in zip(dets_second, scores_second, cates_second)]
+            if self.with_reid:
+                detections_second = [Tracklet_w_velocity(tlwh, s, cate, motion=self.motion, feat=feat) for
+                                  (tlwh, s, cate, feat) in zip(dets_second, scores_second, cates_second, features_second)]
+            else:
+                detections_second = [Tracklet_w_velocity(tlwh, s, cate, motion=self.motion) for
+                            (tlwh, s, cate) in zip(dets_second, scores_second, cates_second)]
         else:
             detections_second = []
 
         r_tracked_tracklets = [tracklet_pool[i] for i in u_track if tracklet_pool[i].state == TrackState.Tracked]
 
-        dists = iou_distance(r_tracked_tracklets, detections_second)
+        dists = 1. - iou_distance(r_tracked_tracklets, detections_second)
+        if self.with_reid:  # for low confidence detections, we also use reid and add directly
+            # note that embedding_distance calculate the 1. - cosine, not cosine
+            emb_dists = 1. - embedding_distance(r_tracked_tracklets, detections_second, metric='cosine')
+            dists = dists + emb_dists
 
-        matches, u_track, u_detection_second = linear_assignment(dists, thresh=0.5)
+        matches, u_track, u_detection_second = linear_assignment(-1 * dists, thresh=0.0)
         for itracked, idet in matches:
             track = r_tracked_tracklets[itracked]
             det = detections_second[idet]

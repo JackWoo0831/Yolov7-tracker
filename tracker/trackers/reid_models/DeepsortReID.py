@@ -110,9 +110,9 @@ class Net(nn.Module):
 
 
 class Extractor(object):
-    def __init__(self, model_path, use_cuda=True):
+    def __init__(self, model_path, device=None):
         self.net = Net(reid=True)
-        self.device = "cuda" if torch.cuda.is_available() and use_cuda else "cpu"
+        self.device = device
         state_dict = torch.load(model_path, map_location=torch.device(self.device))[
             'net_dict']
         self.net.load_state_dict(state_dict)
@@ -146,7 +146,7 @@ class Extractor(object):
         return im_batch
 
     def __call__(self, im_crops):
-        if isinstance(im_crops, list):
+        if isinstance(im_crops, list):  # always false because im_crops is a tensor
             im_batch = self._preprocess(im_crops)
         else:
             im_batch = im_crops 
