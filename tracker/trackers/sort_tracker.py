@@ -86,6 +86,12 @@ class SortTracker(object):
                 track.re_activate(det, self.frame_id, new_id=False)
                 refind_tracklets.append(track)
 
+        for it in u_track:
+            track = tracklet_pool[it]
+            if not track.state == TrackState.Lost:
+                track.mark_lost()
+                lost_tracklets.append(track)
+
 
         '''Deal with unconfirmed tracks, usually tracks with only one beginning frame'''
         detections = [detections[i] for i in u_detection]

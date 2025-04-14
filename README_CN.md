@@ -15,6 +15,7 @@ git checkout v2  # change to v2 branch !!
 
 ## 🗺️ 最近更新
 
+- ***2025.4.14*** 修复[issue#144](https://github.com/JackWoo0831/Yolov7-tracker/issues/144)中提到的一些bug，修复sort对丢失轨迹处理的bug.
 - ***2025.4.7*** 增加更多Re-ID模型 (ShuffleNet, VehicleNet, MobileNet), 修复一些bug (例如在轨迹为非活动状态时停止更新边界框长宽), 增加一些小功能 (例如可以修改两阶段关联策略的最低阈值，原来是固定的0.1; 增加将IoU和检测置信度融合的选项)
 - ***2025.4.3*** 增加了ultralytics库最新版本的支持，修复了hybrid sort中的一些bug.
 

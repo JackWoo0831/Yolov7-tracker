@@ -21,6 +21,7 @@ git checkout v2  # change to v2 branch !!
 
 ## 🗺️ Latest News
 
+- ***2025.4.14*** Fix some minor bugs [issue#144](https://github.com/JackWoo0831/Yolov7-tracker/issues/144), and fix the lost tracklet bugs in sort.
 - ***2025.4.7*** Add more Re-ID modules (ShuffleNet, VehicleNet, MobileNet), fix some bugs (such as abandon bbox aspect ratio updating if the tracklet is not activated), and add some functions (customized low filter threshold, fuse detection score, etc.)
 - ***2025.4.3*** Support the newest ultralytics version (YOLO v3 ~ v12) and fix some bugs of hybrid sort.
 

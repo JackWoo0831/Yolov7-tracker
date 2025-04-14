@@ -32,7 +32,7 @@ class DeepSortTracker(object):
 
         self.motion = args.kalman_format
 
-        self.with_reid = args.reid
+        self.with_reid = True  # In deepsort, reid model must be included
 
         self.reid_model = None
         if self.with_reid:

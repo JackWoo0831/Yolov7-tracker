@@ -185,6 +185,8 @@ class DemoDataset(TestDataset):
 
         self.legacy = legacy_yolox
 
+        self.other_param = kwargs
+
     def __getitem__(self, idx):
 
         if not self.is_video:

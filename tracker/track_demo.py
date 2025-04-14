@@ -134,6 +134,11 @@ def main(args):
     if args.save_videos:
         args.save_images = True
 
+    save_dir = args.save_dir
+    save_obj_name = args.obj.replace('/', '_')  # save seq name w.r.t. the obj name, but replace '/'
+    logger.info(f'demo result will be saved in {os.path.join(save_dir), save_obj_name}.txt')
+    logger.info(f"images and videos (if you enable it) will be saved in {os.path.join(save_dir, save_obj_name, 'vis_results')}")
+
     """2. load detector"""
     device = select_device(args.device)
 
@@ -196,9 +201,6 @@ def main(args):
 
     tracker = TRACKER_DICT[args.tracker](args, )
 
-
-    save_dir = args.save_dir
-
     process_bar = enumerate(data_loader)
     process_bar = tqdm(process_bar, total=len(data_loader), ncols=150)
 
@@ -219,7 +221,7 @@ def main(args):
         # get detector output 
         with torch.no_grad():
             if 'ultra' in args.detector:
-                output = model.predict(img, conf=args.conf_thresh, iou=args.nms_thresh)
+                    output = model.predict(img, conf=args.conf_thresh, iou=args.nms_thresh, verbose=False)
             else:
                 output = model(img)
 
@@ -264,14 +266,14 @@ def main(args):
 
         if args.save_images:
             plot_img(img=ori_img, frame_id=frame_idx, results=[cur_tlwh, cur_id, cur_cls], 
-                        save_dir=os.path.join(save_dir, 'vis_results'))
+                        save_dir=os.path.join(save_dir, save_obj_name, 'vis_results'))
 
-    save_results(folder_name=os.path.join(save_dir, 'txt_results'), 
-                    seq_name='demo', 
-                    results=results)
+    save_results(save_dir=save_dir, 
+                seq_name=save_obj_name,  
+                results=results)
     
     if args.save_videos:
-        save_video(images_path=os.path.join(save_dir, 'vis_results'))
+        save_video(images_path=os.path.join(save_dir, save_obj_name, 'vis_results'))
         logger.info(f'save video done')
 
 if __name__ == '__main__':
