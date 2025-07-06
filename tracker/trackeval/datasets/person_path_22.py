@@ -230,7 +230,7 @@ class PersonPath22(_BaseDataset):
             time_key = str(t+1)
             if time_key in read_data.keys():
                 try:
-                    time_data = np.asarray(read_data[time_key], dtype=np.float)
+                    time_data = np.asarray(read_data[time_key], dtype=np.float32)
                 except ValueError:
                     if is_gt:
                         raise TrackEvalException(
@@ -276,7 +276,7 @@ class PersonPath22(_BaseDataset):
                     raw_data['tracker_confidences'][t] = np.empty(0)
             if is_gt:
                 if time_key in ignore_data.keys():
-                    time_ignore = np.asarray(ignore_data[time_key], dtype=np.float)
+                    time_ignore = np.asarray(ignore_data[time_key], dtype=np.float32)
                     raw_data['gt_crowd_ignore_regions'][t] = np.atleast_2d(time_ignore[:, 2:6])
                 else:
                     raw_data['gt_crowd_ignore_regions'][t] = np.empty((0, 4))

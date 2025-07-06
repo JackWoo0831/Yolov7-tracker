@@ -230,6 +230,10 @@ In addition, you can also specify
 
 - Hybrid SORT: `python tracker/track.py --dataset visdrone_part --detector yolo_ultra --tracker hybridsort --kalman_format hybridsort --detector_model_path weights/yolov8l_VisDrone_35epochs_20230509.pt --save_images`
 
+- ImproAssoc: `python tracker/track.py --dataset visdrone_part --detector yolo_ultra --tracker improassoc --kalman_format bot --detector_model_path weights/yolov8l_VisDrone_35epochs_20230509.pt --save_images`
+
+- TrackTrack: `python tracker/track.py --dataset visdrone_part --detector yolo_ultra --tracker tracktrack --kalman_format bot --detector_model_path weights/yolov8l_VisDrone_35epochs_20230509.pt --save_images --nms_thresh 0.95 --reid`
+
 > **Important notes for UCMC Track:**
 > 
 > 1. Camera parameters. The UCMC Track need the intrinsic and extrinsic parameter of camera. Please organize like the format of `tracker/cam_param_files/uavdt/M0101.txt`. One video sequence corresponds to one txt file. If you do not have the labelled parameters, you can refer to the estimating toolbox in original repo ([https://github.com/corfyi/UCMCTrack](https://github.com/corfyi/UCMCTrack)).

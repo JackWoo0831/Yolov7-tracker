@@ -38,7 +38,7 @@ class Tracklet(BaseTrack):
     def __init__(self, tlwh, score, category, motion='byte'):
 
         # initial position
-        self._tlwh = np.asarray(tlwh, dtype=np.float)
+        self._tlwh = np.asarray(tlwh, dtype=np.float32)
         self.is_activated = False
 
         self.score = score
@@ -222,7 +222,7 @@ class Tracklet_w_velocity(Tracklet):
         trust = (score - det_conf_thresh) / (1. - det_conf_thresh)
         self.dynamic_alpha = self.alpha_fixed_emb + (1. - self.alpha_fixed_emb) * (1. - trust)
 
-    def update_features(self, feat, alpha=1.0):
+    def update_features(self, feat, alpha=0.95):
         '''
         alpha: if specified, use alpha instead of self.alpha
         '''
@@ -300,11 +300,12 @@ class Tracklet_w_velocity(Tracklet):
 
 class Tracklet_w_velocity_four_corner(Tracklet):
     """
-    Tracklet class with four corner points velocity and previous confidence, for hybrid sort.
+    Tracklet class with four corner points velocity and previous confidence, for hybrid sort and tracktrack
     """
-    def __init__(self, tlwh, score, category, motion='byte', delta_t=3, score_thresh=0.4):
+    def __init__(self, tlwh, score, category, motion='byte', delta_t=3, score_thresh=0.4, 
+                 feat=None, feat_history=50, enable_state_new=False):
         # initial position
-        self._tlwh = np.asarray(tlwh, dtype=np.float)
+        self._tlwh = np.asarray(tlwh, dtype=np.float32)
         self.is_activated = False
 
         self.score = score
@@ -317,7 +318,9 @@ class Tracklet_w_velocity_four_corner(Tracklet):
         self.convert_func = self.__getattribute__('tlwh_to_' + STATE_CONVERT_DICT[motion])
 
         # init kalman
-        self.kalman_filter.initialize(self.convert_func(np.r_[self._tlwh, self.score]))  # confidence score is addtional
+        self.is_hybridsort_kalman = motion == 'hybridsort'  # for generalization
+        init_measurement = np.r_[self._tlwh, self.score] if self.is_hybridsort_kalman else self._tlwh
+        self.kalman_filter.initialize(self.convert_func(init_measurement))  # confidence score is addtional
 
         self.last_observation = np.array([-1, -1, -1, -1, -1])  # placeholder
         self.observations = dict()
@@ -327,12 +330,35 @@ class Tracklet_w_velocity_four_corner(Tracklet):
         self.velocity_tl, self.velocity_tr, self.velocity_bl, self.velocity_br = None, None, None, None
         # prev score
         self.prev_score = None
-
         self.score_thresh = score_thresh  # score threshold to limit the range of kalman-predicted score and observation score
-
         self.delta_t = delta_t
 
         self.age = 0  # mark the age
+
+        # reid featurs, for tracktrack
+        self.features = deque([], maxlen=feat_history)  # all features
+        self.smooth_feat = None  # EMA feature
+        self.curr_feat = None  # current feature
+        if feat is not None:
+            self.update_features(feat)
+
+        # NOTE: important: in TrackTrack, the tracklet will be initial as TrackState.New 
+        # and will be TrackState.Tracked until have self.state_tracked_min_len history observations
+        self.enable_state_new = enable_state_new
+        self.state_tracked_min_len = 2  # default 3 in tracktrack paper
+
+    def update_features(self, feat, alpha=0.95):
+        '''
+        alpha: if specified, use alpha instead of self.alpha
+        '''
+        feat /= np.linalg.norm(feat)
+        self.curr_feat = feat
+        if self.smooth_feat is None:
+            self.smooth_feat = feat
+        else:
+            self.smooth_feat = alpha * self.smooth_feat + (1 - alpha) * feat
+        self.features.append(feat)
+        self.smooth_feat /= np.linalg.norm(self.smooth_feat)
 
     @property
     def tlwh(self):
@@ -378,9 +404,9 @@ class Tracklet_w_velocity_four_corner(Tracklet):
         self.prev_score = self.score  # save previous score
         self.score = new_track.score
 
-        self.kalman_filter.update(self.convert_func(np.r_[new_tlwh, new_track.score]))
+        update_measurement = np.r_[new_tlwh, new_track.score] if self.is_hybridsort_kalman else new_tlwh
+        self.kalman_filter.update(self.convert_func(update_measurement))
 
-        self.state = TrackState.Tracked
         self.is_activated = True
         self.time_since_update = 0
         
@@ -414,9 +440,20 @@ class Tracklet_w_velocity_four_corner(Tracklet):
         self.observations[self.age] = new_observation
         self.history_observations.append(new_observation)
 
+        # update reid features
+        if self.curr_feat is not None:
+            self.update_features(self.curr_feat, alpha=0.95+0.05*new_track.score)
+
+        # update states
+        if self.enable_state_new:
+            self.state = TrackState.Tracked if len(self.observations.keys()) >= self.state_tracked_min_len else TrackState.New 
+        else:
+            self.state = TrackState.Tracked
+
     def re_activate(self, new_track, frame_id, new_id=False):
         
-        self.kalman_filter.update(self.convert_func(np.r_[new_track.tlwh, new_track.score]))
+        update_measurement = np.r_[new_track.tlwh, new_track.score] if self.is_hybridsort_kalman else new_track.tlwh
+        self.kalman_filter.update(self.convert_func(update_measurement))
 
         self.state = TrackState.Tracked
         self.is_activated = True
@@ -424,6 +461,18 @@ class Tracklet_w_velocity_four_corner(Tracklet):
         if new_id:
             self.track_id = self.next_id()
         self.score = new_track.score
+
+        if new_track.curr_feat is not None:
+            self.update_features(new_track.curr_feat)
+
+    def activate(self, frame_id):
+        self.track_id = self.next_id()
+
+        self.state = TrackState.New if self.enable_state_new else TrackState.Tracked
+        if frame_id == 1:
+            self.is_activated = True
+        self.frame_id = frame_id
+        self.start_frame = frame_id
 
     def get_velocity(self, ):
         """
@@ -474,7 +523,7 @@ class Tracklet_w_bbox_buffer(Tracklet):
     """
     def __init__(self, tlwh, score, category, motion='byte'):
         # initial position
-        self._tlwh = np.asarray(tlwh, dtype=np.float)
+        self._tlwh = np.asarray(tlwh, dtype=np.float32)
         self.is_activated = False
 
         self.score = score
@@ -596,7 +645,7 @@ class Tracklet_w_depth(Tracklet):
         cx = ret[0] + 0.5 * ret[2]
         y2 = ret[1] +  ret[3]
         lendth = 2000 - y2
-        return np.asarray([cx, y2, lendth], dtype=np.float)
+        return np.asarray([cx, y2, lendth], dtype=np.float32)
     
 
 class Tracklet_w_UCMC(Tracklet):
@@ -618,7 +667,7 @@ class Tracklet_w_UCMC(Tracklet):
     def __init__(self, tlwh, score, category, motion='ucmc'):
 
         # initial position
-        self._tlwh = np.asarray(tlwh, dtype=np.float)
+        self._tlwh = np.asarray(tlwh, dtype=np.float32)
         self.is_activated = False
 
         self.score = score

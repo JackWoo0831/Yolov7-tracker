@@ -1,6 +1,6 @@
 # Config file of VisDrone dataset
 
-DATASET_ROOT: '/data/wujiapeng/datasets/VisDrone2019/VisDrone2019'
+DATASET_ROOT: '/root/datasets/visdrone/'
 SPLIT: val
 CATEGORY_NAMES: 
   - 'pedestrain'

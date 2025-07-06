@@ -1,8 +1,9 @@
 numpy
-cython-bbox==0.1.3
+Cython
 loguru
 motmetrics==1.4.0
 ninja
+opencv-python
 
 pandas
 Pillow
@@ -11,6 +12,7 @@ PyYAML
 
 scikit-learn
 scipy
+filterpy
 seaborn
 
 thop
@@ -22,3 +24,5 @@ tqdm
 wandb
 
 gdown
+
+ultralytics

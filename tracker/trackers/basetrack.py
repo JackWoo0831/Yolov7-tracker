@@ -1,3 +1,7 @@
+"""
+Base class of Tracklets, used in tracklet.py
+"""
+
 import numpy as np
 from collections import OrderedDict
 

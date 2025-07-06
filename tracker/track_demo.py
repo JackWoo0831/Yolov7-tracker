@@ -29,6 +29,8 @@ from trackers.strongsort_tracker import StrongSortTracker
 from trackers.sparse_tracker import SparseTracker
 from trackers.ucmc_tracker import UCMCTracker
 from trackers.hybridsort_tracker import HybridSortTracker
+from trackers.tracktrack_tracker import TrackTrackTracker
+from trackers.improassoc_tracker import ImproAssocTracker
 
 # YOLOX modules
 try:
@@ -73,7 +75,9 @@ TRACKER_DICT = {
     'strongsort': StrongSortTracker, 
     'sparsetrack': SparseTracker, 
     'ucmctrack': UCMCTracker, 
-    'hybridsort': HybridSortTracker
+    'hybridsort': HybridSortTracker, 
+    'tracktrack': TrackTrackTracker, 
+    'improassoc': ImproAssocTracker
 }
 
 def get_args():
@@ -93,8 +97,8 @@ def get_args():
 
     parser.add_argument('--conf_thresh', type=float, default=0.2, help='filter tracks')
     parser.add_argument('--conf_thresh_low', type=float, default=0.1, help='filter low conf detections, used in two-stage association')
+    parser.add_argument('--init_thresh', type=float, default=0.3, help='filter new detections, larger than this thresh consider as new tracklet')
     parser.add_argument('--nms_thresh', type=float, default=0.7, help='thresh for NMS')
-    parser.add_argument('--iou_thresh', type=float, default=0.5, help='IOU thresh to filter tracks')
 
     parser.add_argument('--device', type=str, default='6', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
 
@@ -121,6 +125,8 @@ def get_args():
     parser.add_argument('--save_videos', action='store_true', help='save tracking results (video)')
     
     parser.add_argument('--track_eval', type=bool, default=True, help='Use TrackEval to evaluate')
+
+    parser.add_argument('--cmc_method', type=str, default='orb', help='feature discriptor in camera motion compensation')
 
     """camera parameter"""
     parser.add_argument('--camera_parameter_folder', type=str, default='./tracker/cam_param_files', help='folder path of camera parameter files')
@@ -265,7 +271,7 @@ def main(args):
         results.append((frame_idx + 1, cur_id, cur_tlwh, cur_cls, cur_score))
 
         if args.save_images:
-            plot_img(img=ori_img, frame_id=frame_idx, results=[cur_tlwh, cur_id, cur_cls], 
+            plot_img(img=ori_img, frame_id=frame_idx + 1, results=[cur_tlwh, cur_id, cur_cls], 
                         save_dir=os.path.join(save_dir, save_obj_name, 'vis_results'))
 
     save_results(save_dir=save_dir, 

@@ -4,7 +4,6 @@ Sparse Track
 
 import numpy as np  
 import torch 
-from torchvision.ops import nms
 
 import cv2 
 import torchvision.transforms as T
@@ -15,23 +14,16 @@ from .matching import *
 
 from .camera_motion_compensation.cmc import GMC
 
-class SparseTracker(object):
+# base class
+from .basetracker import BaseTracker
+
+class SparseTracker(BaseTracker):
     def __init__(self, args, frame_rate=30):
-        self.tracked_tracklets = []  # type: list[Tracklet]
-        self.lost_tracklets = []  # type: list[Tracklet]
-        self.removed_tracklets = []  # type: list[Tracklet]
-
-        self.frame_id = 0
-        self.args = args
-
-        self.det_thresh = args.conf_thresh + 0.1
-        self.buffer_size = int(frame_rate / 30.0 * args.track_buffer)
-        self.max_time_lost = self.buffer_size
-
-        self.motion = args.kalman_format            
+        
+        super().__init__(args, frame_rate=frame_rate)
 
         # camera motion compensation module
-        self.gmc = GMC(method='orb', downscale=2, verbose=None)
+        self.gmc = GMC(method=args.cmc_method, downscale=2, verbose=None)
 
         # once init, clear all trackid count to avoid large id
         BaseTrack.clear_count()
@@ -181,7 +173,7 @@ class SparseTracker(object):
                 tracked_tracklets.append(track)
 
         ''' Step 2: First association, with high score detection boxes, depth cascade mathcing'''
-        tracklet_pool = joint_tracklets(tracked_tracklets, self.lost_tracklets)
+        tracklet_pool = BaseTracker.joint_tracklets(tracked_tracklets, self.lost_tracklets)
 
         # Predict the current location with Kalman
         for tracklet in tracklet_pool:
@@ -244,7 +236,7 @@ class SparseTracker(object):
         """ Step 4: Init new tracklets"""
         for inew in u_detection:
             track = detections[inew]
-            if track.score < self.det_thresh:
+            if track.score < self.init_thresh:
                 continue
             track.activate(self.frame_id)
             activated_tracklets.append(track)
@@ -258,55 +250,8 @@ class SparseTracker(object):
         # print('Ramained match {} s'.format(t4-t3))
 
         self.tracked_tracklets = [t for t in self.tracked_tracklets if t.state == TrackState.Tracked]
-        self.tracked_tracklets = joint_tracklets(self.tracked_tracklets, activated_tracklets)
-        self.tracked_tracklets = joint_tracklets(self.tracked_tracklets, refind_tracklets)
-        self.lost_tracklets = sub_tracklets(self.lost_tracklets, self.tracked_tracklets)
-        self.lost_tracklets.extend(lost_tracklets)
-        self.lost_tracklets = sub_tracklets(self.lost_tracklets, self.removed_tracklets)
-        self.removed_tracklets.extend(removed_tracklets)
-        self.tracked_tracklets, self.lost_tracklets = remove_duplicate_tracklets(self.tracked_tracklets, self.lost_tracklets)
-        # get scores of lost tracks
+        self.merge_tracklets(activated_tracklets, refind_tracklets, lost_tracklets, removed_tracklets)
+
         output_tracklets = [track for track in self.tracked_tracklets if track.is_activated]
 
         return output_tracklets
-
-
-def joint_tracklets(tlista, tlistb):
-    exists = {}
-    res = []
-    for t in tlista:
-        exists[t.track_id] = 1
-        res.append(t)
-    for t in tlistb:
-        tid = t.track_id
-        if not exists.get(tid, 0):
-            exists[tid] = 1
-            res.append(t)
-    return res
-
-
-def sub_tracklets(tlista, tlistb):
-    tracklets = {}
-    for t in tlista:
-        tracklets[t.track_id] = t
-    for t in tlistb:
-        tid = t.track_id
-        if tracklets.get(tid, 0):
-            del tracklets[tid]
-    return list(tracklets.values())
-
-
-def remove_duplicate_tracklets(trackletsa, trackletsb):
-    pdist = iou_distance(trackletsa, trackletsb)
-    pairs = np.where(pdist < 0.15)
-    dupa, dupb = list(), list()
-    for p, q in zip(*pairs):
-        timep = trackletsa[p].frame_id - trackletsa[p].start_frame
-        timeq = trackletsb[q].frame_id - trackletsb[q].start_frame
-        if timep > timeq:
-            dupb.append(q)
-        else:
-            dupa.append(p)
-    resa = [t for i, t in enumerate(trackletsa) if not i in dupa]
-    resb = [t for i, t in enumerate(trackletsb) if not i in dupb]
-    return resa, resb
