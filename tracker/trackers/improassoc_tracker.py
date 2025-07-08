@@ -29,7 +29,8 @@ class ImproAssocTracker(BaseTracker):
 
         self.reid_model = None
         if self.with_reid:
-            self.reid_model = load_reid_model(args.reid_model, args.reid_model_path, device=args.device)
+            self.reid_model = load_reid_model(args.reid_model, args.reid_model_path, 
+                                              device=args.device, trt=args.trt, crop_size=args.reid_crop_size)
             self.reid_model.eval()            
 
         # some hyper params
@@ -76,8 +77,8 @@ class ImproAssocTracker(BaseTracker):
         """Step 1: Extract reid features"""
         if self.with_reid:
             # here we get all detections features
-            features_keep = self.get_feature(tlwhs=dets[:, :4], ori_img=ori_img)
-            features_second = self.get_feature(tlwhs=dets_second[:, :4], ori_img=ori_img)
+            features_keep = self.get_feature(tlwhs=dets[:, :4], ori_img=ori_img, crop_size=self.args.reid_crop_size)
+            features_second = self.get_feature(tlwhs=dets_second[:, :4], ori_img=ori_img, crop_size=self.args.reid_crop_size)
 
         if len(dets) > 0:
             if self.with_reid:

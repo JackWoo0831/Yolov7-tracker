@@ -30,7 +30,8 @@ class TrackTrackTracker(BaseTracker):
 
         self.reid_model = None
         if self.with_reid:
-            self.reid_model = load_reid_model(args.reid_model, args.reid_model_path, device=args.device)
+            self.reid_model = load_reid_model(args.reid_model, args.reid_model_path, 
+                                              device=args.device, trt=args.trt, crop_size=args.reid_crop_size)
             self.reid_model.eval()
 
         # camera motion compensation module
@@ -168,9 +169,9 @@ class TrackTrackTracker(BaseTracker):
 
         """Step 1: Extract reid features for all detections"""
         if self.with_reid:
-            features_keep = self.get_feature(tlwhs=dets[:, :4], ori_img=ori_img)
-            features_second = self.get_feature(tlwhs=dets_second[:, :4], ori_img=ori_img)
-            features_delete = self.get_feature(tlwhs=dets_delete[:, :4], ori_img=ori_img)
+            features_keep = self.get_feature(tlwhs=dets[:, :4], ori_img=ori_img, crop_size=self.args.reid_crop_size)
+            features_second = self.get_feature(tlwhs=dets_second[:, :4], ori_img=ori_img, crop_size=self.args.reid_crop_size)
+            features_delete = self.get_feature(tlwhs=dets_delete[:, :4], ori_img=ori_img, crop_size=self.args.reid_crop_size)
 
         # initalize all detections
         if len(dets) > 0:

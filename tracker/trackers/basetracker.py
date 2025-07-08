@@ -29,17 +29,18 @@ class BaseTracker(object):
         raise NotImplementedError
 
     @torch.no_grad()
-    def get_feature(self, tlwhs, ori_img):
+    def get_feature(self, tlwhs, ori_img, crop_size=[128, 64]):
         """
         get apperance feature of an object
         tlwhs: shape (num_of_objects, 4)
         ori_img: original image, np.ndarray, shape(H, W, C)
+        crop_size: List[int, int] | Tuple[int, int]
         """
 
         if tlwhs.size == 0:
             return np.empty((0, 512))
 
-        crop_bboxes = crop_and_resize(tlwhs, ori_img, input_format='tlwh', sz=(64, 128))
+        crop_bboxes = crop_and_resize(tlwhs, ori_img, input_format='tlwh', sz=(crop_size[1], crop_size[0]))
         features = self.reid_model(crop_bboxes).cpu().numpy()
 
         return features

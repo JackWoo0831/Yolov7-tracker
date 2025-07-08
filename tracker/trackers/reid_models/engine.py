@@ -21,6 +21,9 @@ from .ShuffleNetv2 import *
 from .MobileNetv2 import *
 from .VehicleNet import ft_net
 
+# tensor rt converter and inferencer
+from accelerations.tensorrt_tools import TensorRTConverter, TensorRTInference
+
 # All reid models
 REID_MODEL_DICT = {
     'osnet_x1_0': osnet_x1_0, 
@@ -38,7 +41,7 @@ REID_MODEL_DICT = {
 }
 
 
-def load_reid_model(reid_model, reid_model_path, device=None):
+def load_reid_model(reid_model, reid_model_path=None, device=None, trt=False, crop_size=[128, 64]):
     """
     load reid model according to model name and checkpoint
     """
@@ -49,13 +52,39 @@ def load_reid_model(reid_model, reid_model_path, device=None):
         raise NotImplementedError        
         
     if 'deepsort' in reid_model:
-        model = REID_MODEL_DICT[reid_model](reid_model_path, device=device)
+        
+        if trt:
+            # check whether need to convert
+            if not reid_model_path.endswith('.engine'):
+                model = REID_MODEL_DICT[reid_model](reid_model_path, device=device)
+                trt_converter = TensorRTConverter(model, input_shape=[3, *crop_size], ckpt_path=reid_model_path, 
+                                                min_opt_max_batch=[1, 8, 32], device=device, load_ckpt=False)
+                trt_converter.export()
+                model = TensorRTInference(engine_path=trt_converter.trt_model, min_opt_max_batch=[1, 8, 32], device=device)
+            else:
+                model = TensorRTInference(engine_path=reid_model_path, min_opt_max_batch=[1, 8, 32], device=device)
+
+        else:
+            model = REID_MODEL_DICT[reid_model](reid_model_path, device=device)
 
     else:
         func = REID_MODEL_DICT[reid_model]
-        model = func(num_classes=1, pretrained=False, )
-        load_pretrained_weights(model, reid_model_path)
-        model.to(device).eval()
+        model = func(num_classes=1, pretrained=False, ).to(device)
+
+        if trt:
+            # check whether need to convert
+            if not reid_model_path.endswith('.engine'):
+                load_pretrained_weights(model, reid_model_path)
+                trt_converter = TensorRTConverter(model, input_shape=[3, *crop_size], ckpt_path=reid_model_path, 
+                                                min_opt_max_batch=[1, 8, 32], device=device, load_ckpt=False)
+                trt_converter.export()
+                model = TensorRTInference(engine_path=trt_converter.trt_model, min_opt_max_batch=[1, 8, 32], device=device)
+            else:
+                model = TensorRTInference(engine_path=reid_model_path, min_opt_max_batch=[1, 8, 32], device=device)
+        
+        else:
+            load_pretrained_weights(model, reid_model_path)
+            model.eval()
     
     return model
 

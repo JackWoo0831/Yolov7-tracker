@@ -27,7 +27,8 @@ class OCSortTracker(BaseTracker):
         self.with_reid = args.reid
         self.reid_model = None
         if self.with_reid:
-            self.reid_model = load_reid_model(args.reid_model, args.reid_model_path, device=args.device)    
+            self.reid_model = load_reid_model(args.reid_model, args.reid_model_path, 
+                                              device=args.device, trt=args.trt, crop_size=args.reid_crop_size)
 
         # once init, clear all trackid count to avoid large id
         BaseTrack.clear_count()
@@ -74,8 +75,8 @@ class OCSortTracker(BaseTracker):
 
         """Step 1: Extract reid features"""
         if self.with_reid:
-            features_keep = self.get_feature(tlwhs=dets[:, :4], ori_img=ori_img)
-            features_second = self.get_feature(tlwhs=dets_second[:, :4], ori_img=ori_img)
+            features_keep = self.get_feature(tlwhs=dets[:, :4], ori_img=ori_img, crop_size=self.args.reid_crop_size)
+            features_second = self.get_feature(tlwhs=dets_second[:, :4], ori_img=ori_img, crop_size=self.args.reid_crop_size)
             # in deep oc sort, low conf detections also need reid features
 
         if len(dets) > 0:

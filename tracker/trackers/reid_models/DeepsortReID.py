@@ -109,8 +109,10 @@ class Net(nn.Module):
         return x
 
 
-class Extractor(object):
+class Extractor(nn.Module):
     def __init__(self, model_path, device=None):
+        super().__init__()
+        
         self.net = Net(reid=True)
         self.device = device
         state_dict = torch.load(model_path, map_location=torch.device(self.device))[
@@ -145,7 +147,7 @@ class Extractor(object):
             0) for im in im_crops], dim=0).float()
         return im_batch
 
-    def __call__(self, im_crops):
+    def forward(self, im_crops):
         if isinstance(im_crops, list):  # always false because im_crops is a tensor
             im_batch = self._preprocess(im_crops)
         else:
