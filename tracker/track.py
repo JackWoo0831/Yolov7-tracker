@@ -120,7 +120,6 @@ def get_args():
     parser.add_argument('--trace', type=bool, default=False, help='traced model of YOLO v7')
     # other model path
     parser.add_argument('--reid_model_path', type=str, default='./weights/osnet_x0_25.pth', help='path for reid model path')
-    parser.add_argument('--dhn_path', type=str, default='./weights/DHN.pth', help='path of DHN path for DeepMOT')
 
    
     """other options"""

@@ -65,6 +65,13 @@ except Exception as e:
     logger.warning('Load yolov8 fail. If you want to use yolov8, please check the installation.')
     pass
 
+# TensorRT
+try:
+    from accelerations.tensorrt_tools import TensorRTConverter, TensorRTInference
+except Exception as e:
+    logger.warning(e)
+    logger.warning('Load TensorRT fail. If you want to convert model to TensorRT, please install the packages.')
+
 TRACKER_DICT = {
     'sort': SortTracker, 
     'bytetrack': ByteTracker, 
@@ -94,6 +101,7 @@ def get_args():
 
     parser.add_argument('--kalman_format', type=str, default='default', help='use what kind of Kalman, sort, deepsort, byte, etc.')
     parser.add_argument('--img_size', type=int, default=1280, help='image size, [h, w]')
+    parser.add_argument('--reid_crop_size', type=int, default=[128, 64], nargs='+', help='crop size in reid model, [h, w]')
 
     parser.add_argument('--conf_thresh', type=float, default=0.2, help='filter tracks')
     parser.add_argument('--conf_thresh_low', type=float, default=0.1, help='filter low conf detections, used in two-stage association')
@@ -111,7 +119,6 @@ def get_args():
     parser.add_argument('--trace', type=bool, default=False, help='traced model of YOLO v7')
     # other model path
     parser.add_argument('--reid_model_path', type=str, default='./weights/osnet_x0_25.pth', help='path for reid model path')
-    parser.add_argument('--dhn_path', type=str, default='./weights/DHN.pth', help='path of DHN path for DeepMOT')
 
    
     """other options"""
@@ -130,6 +137,10 @@ def get_args():
 
     """camera parameter"""
     parser.add_argument('--camera_parameter_folder', type=str, default='./tracker/cam_param_files', help='folder path of camera parameter files')
+    
+    """tensorrt options"""
+    parser.add_argument('--trt', action='store_true', help='use tensorrt engine to detect and reid')
+    
     return parser.parse_args()
 
 def main(args):
@@ -156,48 +167,81 @@ def main(args):
         model.to(device)
         model.eval()
 
-        logger.info(f"loading detector {args.detector} checkpoint {args.detector_model_path}")
-        ckpt = torch.load(args.detector_model_path, map_location=device)
-        model.load_state_dict(ckpt['model'])
-        logger.info("loaded checkpoint done")
-        model = fuse_model(model)
+        if args.trt:  # convert trt
+            # check if need to convert
+            if not args.detector_model_path.endswith('.engine'):
+                trt_converter = TensorRTConverter(model, input_shape=[3, *model_img_size], ckpt_path=args.detector_model_path, 
+                                                min_opt_max_batch=[1, 1, 1], device=device, load_ckpt=True, ckpt_key='model')
+                trt_converter.export()
+                model = TensorRTInference(engine_path=trt_converter.trt_model, min_opt_max_batch=[1, 1, 1], device=device)
+            else:   
+                model = TensorRTInference(engine_path=args.detector_model_path, min_opt_max_batch=[1, 1, 1], device=device)
 
-        stride = None  # match with yolo v7
+        else:  # normal load
+            logger.info(f"loading detector {args.detector} checkpoint {args.detector_model_path}")
+            ckpt = torch.load(args.detector_model_path, map_location=device)
+            model.load_state_dict(ckpt['model'])
+            logger.info("loaded checkpoint done")
+            model = fuse_model(model)
+            logger.info(f'Now detector is on device {next(model.parameters()).device}')
 
-        logger.info(f'Now detector is on device {next(model.parameters()).device}')
+        stride = None  # match with yolo v7        
 
     elif args.detector == 'yolov7':
 
-        logger.info(f"loading detector {args.detector} checkpoint {args.detector_model_path}")
-        model = attempt_load(args.detector_model_path, map_location=device)
+        if args.trt:
+            # check if need to convert
+            stride = 32
+            model_img_size = check_img_size(args.img_size, s=32)
+            if not args.detector_model_path.endswith('.engine'):
+                model = attempt_load(args.detector_model_path, map_location=device)
+                trt_converter = TensorRTConverter(model, input_shape=[3, *model_img_size], ckpt_path=args.detector_model_path, 
+                                                min_opt_max_batch=[1, 1, 1], device=device, load_ckpt=False)
+                trt_converter.export()
+                model = TensorRTInference(engine_path=trt_converter.trt_model, min_opt_max_batch=[1, 1, 1], device=device)
+            else:
+                model = TensorRTInference(engine_path=args.detector_model_path, min_opt_max_batch=[1, 1, 1], device=device)
 
-        # get inference img size
-        stride = int(model.stride.max())  # model stride
-        model_img_size = check_img_size(args.img_size, s=stride)  # check img_size
+        else:
+            logger.info(f"loading detector {args.detector} checkpoint {args.detector_model_path}")
+            model = attempt_load(args.detector_model_path, map_location=device)
 
-        # Traced model
-        model = TracedModel(model, device=device, img_size=args.img_size)
-        # model.half()
+            # Traced model
+            model = TracedModel(model, device=device, img_size=args.img_size)
+            # model.half()
 
-        logger.info("loaded checkpoint done")
+            logger.info("loaded checkpoint done")
+            logger.info(f'Now detector is on device {next(model.parameters()).device}')
 
-        logger.info(f'Now detector is on device {next(model.parameters()).device}')
+            # get inference img size
+            stride = int(model.stride.max())  # model stride
+            model_img_size = check_img_size(args.img_size, s=stride)  # check img_size
 
     elif 'ultra' in args.detector:
 
-        logger.info(f"loading detector {args.detector} checkpoint {args.detector_model_path}")
-        model = YOLO(args.detector_model_path)
+        if args.trt:
+            # for ultralytics, we use the api provided by official ultralytics
+            # check if need to convert
+            if not args.detector_model_path.endswith('.engine'):
+                model = YOLO(args.detector_model_path)
+                model = YOLO(model.export(format="engine"))
+            else:
+                model = YOLO(args.detector_model_path)
+
+        else:
+            logger.info(f"loading detector {args.detector} checkpoint {args.detector_model_path}")
+            model = YOLO(args.detector_model_path)
+
+            logger.info("loaded checkpoint done")
 
         model_img_size = [None, None]  
         stride = None 
 
-        logger.info("loaded checkpoint done")
-
     else:
         logger.error(f"detector {args.detector} is not supprted")
         logger.error("If you want to use the yolo v8 by ultralytics, please specify the `--detector` \
-                as the string including the substring `ultra`, \
-                such as `yolo_ultra_v8` or `yolo11_ultralytics`")
+                     as the string including the substring `ultra`, \
+                     such as `yolo_ultra_v8` or `yolo11_ultralytics`")
         exit(0)
 
     """3. load sequences"""

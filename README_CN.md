@@ -2,22 +2,39 @@
 
 ## ❗❗重要提示
 
-与之前的版本相比，这是一个***全新的版本（分支v2）***！！！
+最近有一个重大更新, 为了准确性和可读性, 我**重新组织了**所有代码. 更重要的是, **添加了两个新的sota跟踪器**(ImpraAssoc和TrackTrack), 并支持**TensorRT engine**.
 
-**请直接使用这个版本，因为我几乎重写了所有代码，以确保更好的可读性和改进的结果，并修正了以往代码中的一些错误。**
+新版本发布于**branch v2.1**:
 
 ```bash 
 git clone https://github.com/JackWoo0831/Yolov7-tracker.git
-git checkout v2  # change to v2 branch !!
+git checkout v2.1  # change to v2.1 branch !!
 ```
 
-🙌 ***如果您有任何关于添加跟踪器的建议***，请在Issues部分留言并附上论文标题或链接！欢迎大家一起来让这个repo变得更好
+🙌 ***QQ交流群已建立, 欢迎加入!***，您可以在QQ群中提出bug、意见建议或者一起来做有趣的CV/AI项目！
+然而，**Bug或问题还是优先在issue区提出，以便让更多人看到.**
+
+<img src="figure/GroupQRcode.jpg" alt="group" style="width:40%;">
 
 ## 🗺️ 最近更新
 
-- ***2025.4.14*** 修复[issue#144](https://github.com/JackWoo0831/Yolov7-tracker/issues/144)中提到的一些bug，修复sort对丢失轨迹处理的bug.
-- ***2025.4.7*** 增加更多Re-ID模型 (ShuffleNet, VehicleNet, MobileNet), 修复一些bug (例如在轨迹为非活动状态时停止更新边界框长宽), 增加一些小功能 (例如可以修改两阶段关联策略的最低阈值，原来是固定的0.1; 增加将IoU和检测置信度融合的选项)
-- ***2025.4.3*** 增加了ultralytics库最新版本的支持，修复了hybrid sort中的一些bug.
+- ***2025.7.8*** 新版本2.1发布. 添加ImproAssoc, TrackTrack并支持TensorRT. 其他细节如下:
+
+<details>
+<summary>更新细节</summary>
+
+
+1. 重新注释整理matching.py中所有函数
+2. 对于相机运动补偿, 可自定义特征提取子的算法(SIFT, ORB, ECC), 运行`track.py`时指定`--cmc_method`参数.
+3. 对于BoT-SORT, ByteTrack等方法, 原先的低置信度筛选阈值被固定设置为`0.1`. 现在可以手动设置, 运行`track.py`(或`track_demo.py`)时指定`--conf_thresh_low`参数.
+4. 加入`init_thresh`参数作为初始化目标阈值, 弃用原本的`args.conf + 0.1`定值. 运行`track.py`时指定`--init_thresh`参数.
+5. 在ReID特征提取中, 原本的裁剪-resize大小为定值`(h, w) = (128, 64)`, 现在可以手动设置, 运行`track.py`时指定`--reid_crop_size`参数, 例如`--reid_crop_size 32 64`.
+6. 将所有Tracker继承BaseTracker类以实现良好的代码复用
+7. 修复strongsort的reid相似度计算bug
+8. 弃用cython_bbox以获得更好的numpy版本兼容
+9. 弃用np.float等以获得更好的numpy版本兼容
+10. 重新整理requirements.txt
+</details>
 
 
 ## ❤️ 介绍
@@ -41,6 +58,8 @@ git checkout v2  # change to v2 branch !!
 - Sparse Track ([arxiv 2306](https://arxiv.org/pdf/2306.05238))
 - UCMC Track ([AAAI 2024](http://arxiv.org/abs/2312.08952))
 - Hybrid SORT([AAAI 2024](https://ojs.aaai.org/index.php/AAAI/article/view/28471))
+- ImproAssoc ([CVPRW 2023](https://openaccess.thecvf.com/content/CVPR2023W/E2EAD/papers/Stadler_An_Improved_Association_Pipeline_for_Multi-Person_Tracking_CVPRW_2023_paper.pdf))
+- TrackTrack ([CVPR 2025](https://openaccess.thecvf.com/content/CVPR2025/html/Shim_Focusing_on_Tracks_for_Online_Multi-Object_Tracking_CVPR_2025_paper.html))
 
 REID模型支持：
 
@@ -231,11 +250,29 @@ python tracker/track.py --dataset ${dataset name, related with the yaml file} --
 
 - Hybrid SORT: `python tracker/track.py --dataset visdrone_part --detector yolo_ultra --tracker hybridsort --kalman_format hybridsort --detector_model_path weights/yolov8l_VisDrone_35epochs_20230509.pt --save_images`
 
+- ImproAssoc: `python tracker/track.py --dataset visdrone_part --detector yolo_ultra --tracker improassoc --kalman_format bot --detector_model_path weights/yolov8l_VisDrone_35epochs_20230509.pt --save_images`
+
+- TrackTrack: `python tracker/track.py --dataset visdrone_part --detector yolo_ultra --tracker tracktrack --kalman_format bot --detector_model_path weights/yolov8l_VisDrone_35epochs_20230509.pt --save_images --nms_thresh 0.95 --reid`
+
 >**UCMC Track的重要提示：**
 > 
 > 1. 相机参数. UCMC Track需要相机的内参和外参. 请按照`tracker/cam_ram_files/uavdt/M0101.txt`的格式组织. 一个视频序列对应一个txt文件. 如果您没有标记的参数, 可以参考原始仓库中的估算工具箱([https://github.com/corfyi/UCMCTrack](https://github.com/corfyi/UCMCTrack)).
 > 
 > 2. 该代码不包含每两帧之间的相机运动补偿部分, 请参阅[https://github.com/corfyi/UCMCTrack/issues/12](https://github.com/corfyi/UCMCTrack/issues/12). 在我看来, 既然算法叫"统一相机运动补偿", 因此不需要每两帧之间再更新补偿. 
+
+### ✨ TensorRT的转换与推理
+
+该代码支持**全自动**的Tensor RT engine的生成与推理, **既可以用于检测模型, 也可以用于ReID模型**. 如果您还没有转换Tensor RT engine, 只需在运行时加上`--trt`参数, 例如:
+
+```bash
+python tracker/track.py --dataset mot17 --detector yolox --tracker ocsort --kalman_format ocsort --detector_model_path weights/bytetrack_m_mot17.pth.tar --reid --reid_model shufflenet_v2_x1_0 --reid_model_path shufflenetv2_x1-5666bf0f80.pth --trt
+```
+
+如果已有engine, 则直接将相关路径写成engine, 参数`--trt`可以省略:
+
+```bash
+python tracker/track.py --dataset visdrone_part --detector b8_ultra --tracker deepsort --kalman_format byte --detector_model_path weights/yolov8l_VisDroneDet_35epochs_20230605.engine --reid deepsort --reid_model_path weights/ckpt.engine
+```
 
 ### ✅ 评估
 
