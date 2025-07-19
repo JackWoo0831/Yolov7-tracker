@@ -153,7 +153,7 @@ def main(args):
 
     save_dir = args.save_dir
     save_obj_name = args.obj.replace('/', '_')  # save seq name w.r.t. the obj name, but replace '/'
-    logger.info(f'demo result will be saved in {os.path.join(save_dir), save_obj_name}.txt')
+    logger.info(f'demo result will be saved in {os.path.join(save_dir, save_obj_name)}.txt')
     logger.info(f"images and videos (if you enable it) will be saved in {os.path.join(save_dir, save_obj_name, 'vis_results')}")
 
     """2. load detector"""

@@ -1,6 +1,7 @@
 import numpy as np 
 import cv2 
 import os 
+from loguru import logger 
 
 def save_results(save_dir, seq_name, results, data_type='default'):
     """
@@ -10,7 +11,10 @@ def save_results(save_dir, seq_name, results, data_type='default'):
     to_file: file path(optional)
     data_type: 'default' | 'mot_challenge', write data format, default or MOT submission
     """
-    assert len(results)
+    try:
+        assert len(results)
+    except:
+        logger.error('the tracking result is empty, please check your dataset/detector or whether the data path is correct')
 
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
