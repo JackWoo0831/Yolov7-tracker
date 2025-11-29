@@ -123,9 +123,12 @@ class ByteTracker(BaseTracker):
                           (tlwh, s, cate) in zip(dets_second, scores_second, cates_second)]
         else:
             detections_second = []
+
         r_tracked_tracklets = [tracklet_pool[i] for i in u_track if tracklet_pool[i].state == TrackState.Tracked]
         dists = iou_distance(r_tracked_tracklets, detections_second)
+        
         matches, u_track, u_detection_second = linear_assignment(dists, thresh=0.5)
+        
         for itracked, idet in matches:
             track = r_tracked_tracklets[itracked]
             det = detections_second[idet]

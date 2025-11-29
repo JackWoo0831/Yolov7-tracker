@@ -11,6 +11,7 @@ wandb/*
 track_result.txt
 .idea/
 track_results/*
+track_demo_results/*
 *.mp4
 *.mkv
 temp.py

@@ -97,6 +97,13 @@ class C_BIoUTracker(BaseTracker):
                 track.re_activate(det, self.frame_id, new_id=False)
                 refind_tracklets.append(track)
 
+        # mark u_track as lost
+        for it in u_track:
+            track = unmatched_tracklets[it]
+            if not track.state == TrackState.Lost:
+                track.mark_lost()
+                lost_tracklets.append(track)
+                
         '''Deal with unconfirmed tracks, usually tracks with only one beginning frame'''
         detections = [unmatched_detections[i] for i in u_detection]
         dists = buffered_iou_distance(unconfirmed, detections, level=1)

@@ -24,6 +24,7 @@ However, bugs or issues should still be prioritized in the **Issue section in Gi
 
 ## 🗺️ Latest News
 
+- ***2025.11.28*** FastTracker is added. Fix lost tracklets bugs of CBIoU_tracker.
 - ***2025.7.8*** New version 2.1 released. Add ImproAssoc, TrackTrack and support TensorRT. The other details are as follows:
 
 <details>
@@ -66,6 +67,7 @@ and the tracker supports:
 - Hybrid SORT ([AAAI 2024](https://ojs.aaai.org/index.php/AAAI/article/view/28471))
 - ImproAssoc ([CVPRW 2023](https://openaccess.thecvf.com/content/CVPR2023W/E2EAD/papers/Stadler_An_Improved_Association_Pipeline_for_Multi-Person_Tracking_CVPRW_2023_paper.pdf))
 - TrackTrack ([CVPR 2025](https://openaccess.thecvf.com/content/CVPR2025/html/Shim_Focusing_on_Tracks_for_Online_Multi-Object_Tracking_CVPR_2025_paper.html))
+- FastTracker ([arxiv 2508](https://arxiv.org/pdf/2508.14370))
 
 and the reid model supports:
 
@@ -260,11 +262,20 @@ In addition, you can also specify
 
 - TrackTrack: `python tracker/track.py --dataset visdrone_part --detector yolo_ultra --tracker tracktrack --kalman_format bot --detector_model_path weights/yolov8l_VisDrone_35epochs_20230509.pt --save_images --nms_thresh 0.95 --reid`
 
+- FastTracker: `python tracker/track.py --dataset uavdt --detector yolo_ultra_v8 --tracker fasttrack --kalman_format byte --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt`
+
+
 > **Important notes for UCMC Track:**
 > 
 > 1. Camera parameters. The UCMC Track need the intrinsic and extrinsic parameter of camera. Please organize like the format of `tracker/cam_param_files/uavdt/M0101.txt`. One video sequence corresponds to one txt file. If you do not have the labelled parameters, you can refer to the estimating toolbox in original repo ([https://github.com/corfyi/UCMCTrack](https://github.com/corfyi/UCMCTrack)).
 > 
 > 2. The code does not contain the camera motion compensation part between every two frame, please refer to [https://github.com/corfyi/UCMCTrack/issues/12](https://github.com/corfyi/UCMCTrack/issues/12). From my perspective, since the algorithm name is 'uniform', the update of compensation between every two frames is not necessary.
+
+>**Important Notes on Fast Tracker**
+> 
+> In `fast_tracker.py`, the configuration related to the tracker is stored in the global variable `FAST_TRACKER_CONFIG`, which includes thresholds for recording occluded targets (such as velocity damping, bounding box enlargement, etc.) and environmental optimizations for road structure fusion (under the "ROIs" key, with specific values and meanings referenced in the original paper)
+
+
 
 ### ✨ TensorRT Convert and Inference
 

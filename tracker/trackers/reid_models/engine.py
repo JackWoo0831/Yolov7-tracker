@@ -22,7 +22,11 @@ from .MobileNetv2 import *
 from .VehicleNet import ft_net
 
 # tensor rt converter and inferencer
-from accelerations.tensorrt_tools import TensorRTConverter, TensorRTInference
+try:
+    from accelerations.tensorrt_tools import TensorRTConverter, TensorRTInference
+except Exception as e:
+    logger.warning(e)
+    logger.warning('Load TensorRT fail. If you want to convert model to TensorRT, please install the packages.')
 
 # All reid models
 REID_MODEL_DICT = {

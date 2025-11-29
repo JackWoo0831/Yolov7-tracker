@@ -562,7 +562,7 @@ class Tracklet_w_bbox_buffer(Tracklet):
     def re_activate(self, new_track, frame_id, new_id=False):
         
         # TODO different convert
-        self.kalman_filter.update(self.convert_func(new_track.tlwh))
+        # self.kalman_filter.update(self.convert_func(new_track.tlwh))
 
         self.state = TrackState.Tracked
         self.is_activated = True
@@ -766,3 +766,41 @@ class Tracklet_w_UCMC(Tracklet):
         if new_id:
             self.track_id = self.next_id()
         self.score = new_track.score
+
+class Tracklet_w_occluded(Tracklet):
+    """
+    tracklet with a occlusion modeling, for Fast Tracker
+    """
+    def __init__(self, tlwh, score, category, motion='byte'):
+        super().__init__(tlwh, score, category, motion)
+
+        self.tracklet_len = 0
+
+        self.not_matched = 0
+        self.is_occluded = False
+        self.occluded_len = 0
+        self.last_occluded_frame = -1
+        self.was_recently_occluded = False
+        self.mean_history = []
+
+    def activate(self, frame_id):
+        super().activate(frame_id)
+
+        self.tracklet_len = 0
+    
+    def re_activate(self, new_track, frame_id, new_id=False):
+        super().re_activate(new_track, frame_id, new_id)
+
+        if len(self.mean_history) > 100:  # limit history length
+            self.mean_history.pop(0)
+
+    def update(self, new_track, frame_id):
+        super().update(new_track, frame_id)
+        
+        self.tracklet_len += 1
+        self.mean_history.append(self.kalman_filter.kf.x.copy())
+
+        if len(self.mean_history) > 100:  # limit history length
+            self.mean_history.pop(0)
+
+        

@@ -18,6 +18,7 @@ git checkout v2.1  # change to v2.1 branch !!
 
 ## 🗺️ 最近更新
 
+- ***2025.11.28*** 增加FastTracker跟踪算法。修复CBIoU Tracker中的丢失轨迹的bug.
 - ***2025.7.8*** 新版本2.1发布. 添加ImproAssoc, TrackTrack并支持TensorRT. 其他细节如下:
 
 <details>
@@ -60,6 +61,7 @@ git checkout v2.1  # change to v2.1 branch !!
 - Hybrid SORT([AAAI 2024](https://ojs.aaai.org/index.php/AAAI/article/view/28471))
 - ImproAssoc ([CVPRW 2023](https://openaccess.thecvf.com/content/CVPR2023W/E2EAD/papers/Stadler_An_Improved_Association_Pipeline_for_Multi-Person_Tracking_CVPRW_2023_paper.pdf))
 - TrackTrack ([CVPR 2025](https://openaccess.thecvf.com/content/CVPR2025/html/Shim_Focusing_on_Tracks_for_Online_Multi-Object_Tracking_CVPR_2025_paper.html))
+- FastTracker ([arxiv 2508](https://arxiv.org/pdf/2508.14370))
 
 REID模型支持：
 
@@ -254,11 +256,17 @@ python tracker/track.py --dataset ${dataset name, related with the yaml file} --
 
 - TrackTrack: `python tracker/track.py --dataset visdrone_part --detector yolo_ultra --tracker tracktrack --kalman_format bot --detector_model_path weights/yolov8l_VisDrone_35epochs_20230509.pt --save_images --nms_thresh 0.95 --reid`
 
+- FastTracker: `python tracker/track.py --dataset uavdt --detector yolo_ultra_v8 --tracker fasttrack --kalman_format byte --detector_model_path weights/yolov8l_UAVDT_60epochs_20230509.pt`
+
 >**UCMC Track的重要提示：**
 > 
 > 1. 相机参数. UCMC Track需要相机的内参和外参. 请按照`tracker/cam_ram_files/uavdt/M0101.txt`的格式组织. 一个视频序列对应一个txt文件. 如果您没有标记的参数, 可以参考原始仓库中的估算工具箱([https://github.com/corfyi/UCMCTrack](https://github.com/corfyi/UCMCTrack)).
 > 
 > 2. 该代码不包含每两帧之间的相机运动补偿部分, 请参阅[https://github.com/corfyi/UCMCTrack/issues/12](https://github.com/corfyi/UCMCTrack/issues/12). 在我看来, 既然算法叫"统一相机运动补偿", 因此不需要每两帧之间再更新补偿. 
+
+>**Fast Tracker的重要提示：**
+> 
+> 在fast_tracker.py中，与跟踪器有关的配置在FAST_TRACKER_CONFIG全局变量中，包括对遮挡目标记录的相关阈值（速度阻尼、边界框放大等），以及融合道路结构的环境优化（"ROIs"键，具体数值以及含义请参照原论文）
 
 ### ✨ TensorRT的转换与推理
 

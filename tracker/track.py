@@ -32,6 +32,7 @@ from trackers.ucmc_tracker import UCMCTracker
 from trackers.hybridsort_tracker import HybridSortTracker
 from trackers.tracktrack_tracker import TrackTrackTracker
 from trackers.improassoc_tracker import ImproAssocTracker
+from trackers.fast_tracker import FastTracker
 
 # YOLOX modules
 try:
@@ -86,7 +87,8 @@ TRACKER_DICT = {
     'ucmctrack': UCMCTracker, 
     'hybridsort': HybridSortTracker, 
     'tracktrack': TrackTrackTracker, 
-    'improassoc': ImproAssocTracker
+    'improassoc': ImproAssocTracker, 
+    'fasttrack': FastTracker
 }
 
 def get_args():

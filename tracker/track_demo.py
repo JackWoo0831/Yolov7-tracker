@@ -31,6 +31,7 @@ from trackers.ucmc_tracker import UCMCTracker
 from trackers.hybridsort_tracker import HybridSortTracker
 from trackers.tracktrack_tracker import TrackTrackTracker
 from trackers.improassoc_tracker import ImproAssocTracker
+from trackers.fast_tracker import FastTracker
 
 # YOLOX modules
 try:
@@ -84,7 +85,8 @@ TRACKER_DICT = {
     'ucmctrack': UCMCTracker, 
     'hybridsort': HybridSortTracker, 
     'tracktrack': TrackTrackTracker, 
-    'improassoc': ImproAssocTracker
+    'improassoc': ImproAssocTracker, 
+    'fasttrack': FastTracker, 
 }
 
 def get_args():
@@ -108,7 +110,7 @@ def get_args():
     parser.add_argument('--init_thresh', type=float, default=0.3, help='filter new detections, larger than this thresh consider as new tracklet')
     parser.add_argument('--nms_thresh', type=float, default=0.7, help='thresh for NMS')
 
-    parser.add_argument('--device', type=str, default='6', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
+    parser.add_argument('--device', type=str, default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
 
     """yolox"""
     parser.add_argument('--num_classes', type=int, default=1)
